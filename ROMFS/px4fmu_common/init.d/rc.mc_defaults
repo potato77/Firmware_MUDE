@@ -12,6 +12,10 @@ then
 	param set PWM_RATE 400
 
 	param set RTL_LAND_DELAY 0
+
+	# Set the default param when use vision's heading and position
+	param set EKF2_AID_MASK 24
+	param set EKF2_HGT_MODE 3
 fi
 
 # This is the gimbal pass mixer
