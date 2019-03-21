@@ -32,7 +32,7 @@
 	branch = master
 [submodule "src/lib/ecl"]
 	path = src/lib/ecl
-	url = https://git.dev.tencent.com/huangwen0907/ecl.git
+	url = https://github.com/abner-amov/ecl.git
 	branch = master
 [submodule "cmake/cmake_hexagon"]
 	path = cmake/cmake_hexagon
