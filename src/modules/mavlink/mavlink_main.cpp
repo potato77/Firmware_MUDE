@@ -2012,6 +2012,8 @@ Mavlink::task_main(int argc, char *argv[])
 
 	}
 
+
+
 	switch (_mode) {
 	case MAVLINK_MODE_NORMAL:
 		configure_stream("ADSB_VEHICLE");
@@ -2046,20 +2048,21 @@ Mavlink::task_main(int argc, char *argv[])
 
 	case MAVLINK_MODE_ONBOARD:
 		configure_stream("ACTUATOR_CONTROL_TARGET0", 10.0f);
-		configure_stream("ATTITUDE", 100.0f);
-		configure_stream("ATTITUDE_TARGET", 30.0f);
+
+                configure_stream("ATTITUDE_TARGET", 10.0f);
 		configure_stream("ESTIMATOR_STATUS", 1.0f);
 		configure_stream("EXTENDED_SYS_STATE", 5.0f);
-		configure_stream("HIGHRES_IMU", 50.0f);
+                configure_stream("HIGHRES_IMU", 10.0f);
 		configure_stream("HOME_POSITION", 0.5f);
-		configure_stream("LOCAL_POSITION_NED", 30.0f);
+                configure_stream("LOCAL_POSITION_NED", 50.0f);
 		configure_stream("PING", 1.0f);
-		configure_stream("POSITION_TARGET_LOCAL_NED", 30.0f);
+                configure_stream("POSITION_TARGET_LOCAL_NED", 10.0f);
 		configure_stream("RC_CHANNELS", 10.0f);
-		configure_stream("SYS_STATUS", 5.0f);
+                configure_stream("SYS_STATUS", 10.0f);
 		configure_stream("SYSTEM_TIME", 1.0f);
 		configure_stream("TIMESYNC", 10.0f);
-		configure_stream("VISION_POSITION_ESTIMATE", 10.0f);
+
+                configure_stream("ATTITUDE", -1.0f);
 		break;
 
 	case MAVLINK_MODE_OSD:

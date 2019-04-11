@@ -775,6 +775,24 @@ MulticopterAttitudeControl::run()
 
 				}
 
+				/* publish ude ontroller status */
+				_ude.u_l[0] = 1.0f;
+				_ude.u_l[1] = 2.0f;
+				_ude.u_l[2] = 3.0f;
+				_ude.u_d[0] = 4.0f;
+				_ude.u_d[1] = 5.0f;
+				_ude.u_d[2] = 6.0f;
+				_ude.u_total[0] = _ude.u_l[0] + _ude.u_d[0];
+				_ude.u_total[1] = _ude.u_l[1] + _ude.u_d[1];
+				_ude.u_total[2] = _ude.u_l[2] + _ude.u_d[2];
+
+				if (_ude_pub != nullptr) {
+					orb_publish(_ude_id, _ude_pub, &_ude);
+
+				} else if (_ude_id) {
+					_ude_pub = orb_advertise(_ude_id, &_ude);
+				}
+
 				/* publish controller status */
 				rate_ctrl_status_s rate_ctrl_status;
 				rate_ctrl_status.timestamp = hrt_absolute_time();
