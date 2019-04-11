@@ -785,12 +785,13 @@ MulticopterAttitudeControl::run()
 				_ude.u_total[0] = _ude.u_l[0] + _ude.u_d[0];
 				_ude.u_total[1] = _ude.u_l[1] + _ude.u_d[1];
 				_ude.u_total[2] = _ude.u_l[2] + _ude.u_d[2];
+				_ude.timestamp = hrt_absolute_time();
 
 				if (_ude_pub != nullptr) {
-					orb_publish(_ude_id, _ude_pub, &_ude);
+					orb_publish(ORB_ID(ude), _ude_pub, &_ude);
 
-				} else if (_ude_id) {
-					_ude_pub = orb_advertise(_ude_id, &_ude);
+				} else {
+					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
 				}
 
 				/* publish controller status */
