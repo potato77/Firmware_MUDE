@@ -139,6 +139,8 @@ MulticopterAttitudeControl::parameters_updated()
 {
 	/* Store some of the parameters in a more convenient way & precompute often-used values */
 	/* ude parameter */
+	switch_ude = _switch_ude.get();
+
 	I_quadrotor(0) = _Ixx.get();
 	I_quadrotor(1) = _Iyy.get();
 	I_quadrotor(2) = _Izz.get();
@@ -844,34 +846,27 @@ MulticopterAttitudeControl::run()
 				}
 			}
 
-			if (_v_control_mode.flag_control_attitude_enabled) {
+			// start ude control - qyp
+			if (switch_ude == 1)
+			{
+				control_attitude_ude(dt);
 
-				control_attitude(dt);
+				/* publish ude ontroller status */
+				_ude.timestamp = hrt_absolute_time();
 
-				/* publish attitude rates setpoint */
-				_v_rates_sp.roll = _rates_sp(0);
-				_v_rates_sp.pitch = _rates_sp(1);
-				_v_rates_sp.yaw = _rates_sp(2);
-				_v_rates_sp.thrust = _thrust_sp;
-				_v_rates_sp.timestamp = hrt_absolute_time();
+				if (_ude_pub != nullptr) {
+					orb_publish(ORB_ID(ude), _ude_pub, &_ude);
 
-				if (_v_rates_sp_pub != nullptr) {
-					orb_publish(_rates_sp_id, _v_rates_sp_pub, &_v_rates_sp);
-
-				} else if (_rates_sp_id) {
-					_v_rates_sp_pub = orb_advertise(_rates_sp_id, &_v_rates_sp);
+				} else {
+					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
 				}
+			}
+			// default pid control
+			else
+			{
+				if (_v_control_mode.flag_control_attitude_enabled) {
 
-			} else {
-				/* attitude controller disabled, poll rates setpoint topic */
-				if (_v_control_mode.flag_control_manual_enabled) {
-					/* manual rates control - ACRO mode */
-					Vector3f man_rate_sp(
-							math::superexpo(_manual_control_sp.y, _acro_expo_rp.get(), _acro_superexpo_rp.get()),
-							math::superexpo(-_manual_control_sp.x, _acro_expo_rp.get(), _acro_superexpo_rp.get()),
-							math::superexpo(_manual_control_sp.r, _acro_expo_y.get(), _acro_superexpo_y.get()));
-					_rates_sp = man_rate_sp.emult(_acro_rate_max);
-					_thrust_sp = _manual_control_sp.z;
+					control_attitude(dt);
 
 					/* publish attitude rates setpoint */
 					_v_rates_sp.roll = _rates_sp(0);
@@ -889,68 +884,82 @@ MulticopterAttitudeControl::run()
 
 				} else {
 					/* attitude controller disabled, poll rates setpoint topic */
-					vehicle_rates_setpoint_poll();
-					_rates_sp(0) = _v_rates_sp.roll;
-					_rates_sp(1) = _v_rates_sp.pitch;
-					_rates_sp(2) = _v_rates_sp.yaw;
-					_thrust_sp = _v_rates_sp.thrust;
-				}
-			}
+					if (_v_control_mode.flag_control_manual_enabled) {
+						/* manual rates control - ACRO mode */
+						Vector3f man_rate_sp(
+								math::superexpo(_manual_control_sp.y, _acro_expo_rp.get(), _acro_superexpo_rp.get()),
+								math::superexpo(-_manual_control_sp.x, _acro_expo_rp.get(), _acro_superexpo_rp.get()),
+								math::superexpo(_manual_control_sp.r, _acro_expo_y.get(), _acro_superexpo_y.get()));
+						_rates_sp = man_rate_sp.emult(_acro_rate_max);
+						_thrust_sp = _manual_control_sp.z;
 
-			if (_v_control_mode.flag_control_rates_enabled) {
-				control_attitude_rates(dt);
+						/* publish attitude rates setpoint */
+						_v_rates_sp.roll = _rates_sp(0);
+						_v_rates_sp.pitch = _rates_sp(1);
+						_v_rates_sp.yaw = _rates_sp(2);
+						_v_rates_sp.thrust = _thrust_sp;
+						_v_rates_sp.timestamp = hrt_absolute_time();
 
-				/* publish actuator controls */
-				_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
-				_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
-				_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
-				_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
-				_actuators.control[7] = _v_att_sp.landing_gear;
-				_actuators.timestamp = hrt_absolute_time();
-				_actuators.timestamp_sample = _sensor_gyro.timestamp;
+						if (_v_rates_sp_pub != nullptr) {
+							orb_publish(_rates_sp_id, _v_rates_sp_pub, &_v_rates_sp);
 
-				/* scale effort by battery status */
-				if (_bat_scale_en.get() && _battery_status.scale > 0.0f) {
-					for (int i = 0; i < 4; i++) {
-						_actuators.control[i] *= _battery_status.scale;
+						} else if (_rates_sp_id) {
+							_v_rates_sp_pub = orb_advertise(_rates_sp_id, &_v_rates_sp);
+						}
+
+					} else {
+						/* attitude controller disabled, poll rates setpoint topic */
+						vehicle_rates_setpoint_poll();
+						_rates_sp(0) = _v_rates_sp.roll;
+						_rates_sp(1) = _v_rates_sp.pitch;
+						_rates_sp(2) = _v_rates_sp.yaw;
+						_thrust_sp = _v_rates_sp.thrust;
 					}
 				}
 
-				if (!_actuators_0_circuit_breaker_enabled) {
-					if (_actuators_0_pub != nullptr) {
+				if (_v_control_mode.flag_control_rates_enabled) {
+					control_attitude_rates(dt);
 
-						orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
+					/* publish actuator controls */
+					_actuators.control[0] = (PX4_ISFINITE(_att_control(0))) ? _att_control(0) : 0.0f;
+					_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
+					_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
+					_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
+					_actuators.control[7] = _v_att_sp.landing_gear;
+					_actuators.timestamp = hrt_absolute_time();
+					_actuators.timestamp_sample = _sensor_gyro.timestamp;
 
-					} else if (_actuators_id) {
-						_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);
+					/* scale effort by battery status */
+					if (_bat_scale_en.get() && _battery_status.scale > 0.0f) {
+						for (int i = 0; i < 4; i++) {
+							_actuators.control[i] *= _battery_status.scale;
+						}
 					}
 
+					if (!_actuators_0_circuit_breaker_enabled) {
+						if (_actuators_0_pub != nullptr) {
+
+							orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
+
+						} else if (_actuators_id) {
+							_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);
+						}
+
+					}
+
+					/* publish controller status */
+					rate_ctrl_status_s rate_ctrl_status;
+					rate_ctrl_status.timestamp = hrt_absolute_time();
+					rate_ctrl_status.rollspeed = _rates_prev(0);
+					rate_ctrl_status.pitchspeed = _rates_prev(1);
+					rate_ctrl_status.yawspeed = _rates_prev(2);
+					rate_ctrl_status.rollspeed_integ = _rates_int(0);
+					rate_ctrl_status.pitchspeed_integ = _rates_int(1);
+					rate_ctrl_status.yawspeed_integ = _rates_int(2);
+
+					int instance;
+					orb_publish_auto(ORB_ID(rate_ctrl_status), &_controller_status_pub, &rate_ctrl_status, &instance, ORB_PRIO_DEFAULT);
 				}
-
-				control_attitude_ude(dt);
-
-				/* publish ude ontroller status */
-				_ude.timestamp = hrt_absolute_time();
-
-				if (_ude_pub != nullptr) {
-					orb_publish(ORB_ID(ude), _ude_pub, &_ude);
-
-				} else {
-					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
-				}
-
-				/* publish controller status */
-				rate_ctrl_status_s rate_ctrl_status;
-				rate_ctrl_status.timestamp = hrt_absolute_time();
-				rate_ctrl_status.rollspeed = _rates_prev(0);
-				rate_ctrl_status.pitchspeed = _rates_prev(1);
-				rate_ctrl_status.yawspeed = _rates_prev(2);
-				rate_ctrl_status.rollspeed_integ = _rates_int(0);
-				rate_ctrl_status.pitchspeed_integ = _rates_int(1);
-				rate_ctrl_status.yawspeed_integ = _rates_int(2);
-
-				int instance;
-				orb_publish_auto(ORB_ID(rate_ctrl_status), &_controller_status_pub, &rate_ctrl_status, &instance, ORB_PRIO_DEFAULT);
 			}
 
 			if (_v_control_mode.flag_control_termination_enabled) {

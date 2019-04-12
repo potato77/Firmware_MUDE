@@ -39,6 +39,9 @@
  * @author Anton Babushkin <anton@px4.io>
  */
 
+//UDE switch
+PARAM_DEFINE_INT32(UDE_SWITCH, 0);
+
 //Quadrotor Ixx
 PARAM_DEFINE_FLOAT(UDE_IXX, 0.016f);
 

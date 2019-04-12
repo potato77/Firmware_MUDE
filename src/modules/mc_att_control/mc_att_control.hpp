@@ -189,6 +189,7 @@ private:
 	matrix::Dcmf _board_rotation;			/**< rotation matrix for the orientation that the board is mounted */
 
 	DEFINE_PARAMETERS(
+		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
 		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
 		(ParamFloat<px4::params::UDE_IZZ>) _Izz,
@@ -261,6 +262,7 @@ private:
 		(ParamFloat<px4::params::VT_WV_YAWR_SCL>) _vtol_wv_yaw_rate_scale		/**< Scale value [0, 1] for yaw rate setpoint  */
 	)
 
+    int switch_ude;
 	matrix::Vector3f I_quadrotor;
 	matrix::Vector3f K_ude;
 	matrix::Vector3f T_ude;
