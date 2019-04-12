@@ -119,6 +119,11 @@ private:
 	void		control_attitude_rates(float dt);
 
 	/**
+	 * UDE-based Attitude rates controller.
+	 */
+	void		control_attitude_ude(float dt);
+
+	/**
 	 * Throttle PID attenuation.
 	 */
 	matrix::Vector3f pid_attenuations(float tpa_breakpoint, float tpa_rate);
@@ -163,6 +168,8 @@ private:
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
 
+	matrix::Vector3f integral_ude;			/**<integral error for ude*/
+
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
@@ -182,6 +189,20 @@ private:
 	matrix::Dcmf _board_rotation;			/**< rotation matrix for the orientation that the board is mounted */
 
 	DEFINE_PARAMETERS(
+		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
+		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
+		(ParamFloat<px4::params::UDE_IZZ>) _Izz,
+		(ParamFloat<px4::params::UDE_K_ROLL>) _K_roll_ude,
+		(ParamFloat<px4::params::UDE_K_PITCH>) _K_pitch_ude,
+		(ParamFloat<px4::params::UDE_K_YAW>) _K_yaw_ude,
+		(ParamFloat<px4::params::UDE_T_ROLL>) _T_roll_ude,
+		(ParamFloat<px4::params::UDE_T_PITCH>) _T_pitch_ude,
+		(ParamFloat<px4::params::UDE_T_YAW>) _T_yaw_ude,
+		(ParamFloat<px4::params::UDE_LAMDA>) _lamda_ude,
+		(ParamFloat<px4::params::UDE_INT_LIM_1>) _integral_limit_roll_ude,
+		(ParamFloat<px4::params::UDE_INT_LIM_2>) _integral_limit_pitch_ude,
+		(ParamFloat<px4::params::UDE_INT_LIM_3>) _integral_limit_yaw_ude,
+
 		(ParamFloat<px4::params::MC_ROLL_P>) _roll_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _roll_rate_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_I>) _roll_rate_i,
@@ -239,6 +260,12 @@ private:
 
 		(ParamFloat<px4::params::VT_WV_YAWR_SCL>) _vtol_wv_yaw_rate_scale		/**< Scale value [0, 1] for yaw rate setpoint  */
 	)
+
+	matrix::Vector3f I_quadrotor;
+	matrix::Vector3f K_ude;
+	matrix::Vector3f T_ude;
+	float lamda_ude;
+	matrix::Vector3f integral_limit_ude;
 
 	matrix::Vector3f _attitude_p;		/**< P gain for attitude control */
 	matrix::Vector3f _rate_p;		/**< P gain for angular rate error */

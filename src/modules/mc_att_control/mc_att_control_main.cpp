@@ -119,6 +119,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_rates_prev_filtered.zero();
 	_rates_sp.zero();
 	_rates_int.zero();
+	integral_ude.zero();
 	_thrust_sp = 0.0f;
 	_att_control.zero();
 
@@ -137,6 +138,24 @@ void
 MulticopterAttitudeControl::parameters_updated()
 {
 	/* Store some of the parameters in a more convenient way & precompute often-used values */
+	/* ude parameter */
+	I_quadrotor(0) = _Ixx.get();
+	I_quadrotor(1) = _Iyy.get();
+	I_quadrotor(2) = _Izz.get();
+
+	K_ude(0) = _K_roll_ude.get();
+	K_ude(1) = _K_pitch_ude.get();
+	K_ude(2) = _K_yaw_ude.get();
+
+	T_ude(0) = _T_roll_ude.get();
+	T_ude(1) = _T_pitch_ude.get();
+	T_ude(2) = _T_yaw_ude.get();
+
+	lamda_ude = _lamda_ude.get();
+
+	integral_limit_ude(0) = _integral_limit_roll_ude.get();
+	integral_limit_ude(1) = _integral_limit_pitch_ude.get();
+	integral_limit_ude(2) = _integral_limit_yaw_ude.get();
 
 	/* roll gains */
 	_attitude_p(0) = _roll_p.get();
@@ -357,6 +376,139 @@ MulticopterAttitudeControl::sensor_bias_poll()
 	}
 
 }
+
+/**
+ * UDE-based Attitude controller.   -qyp
+ * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
+ * Output: '_rates_sp' vector, '_thrust_sp'
+ */
+void
+MulticopterAttitudeControl::control_attitude_ude(float dt)
+{
+	/* reset integral if disarmed */
+	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
+		integral_ude.zero();
+	}
+
+	Quatf q_now(_v_att.q);
+
+	Eulerf _attitude_now = q_now;
+
+	_ude.attitude_now[0] = _attitude_now(0);
+	_ude.attitude_now[1] = _attitude_now(1);
+	_ude.attitude_now[2] = _attitude_now(2);
+
+	Quatf q_sp(_v_att_sp.q_d);
+
+	Eulerf _attitude_sp = q_sp;
+
+	_ude.attitude_sp[0] = _attitude_sp(0);
+	_ude.attitude_sp[1] = _attitude_sp(1);
+	_ude.attitude_sp[2] = _attitude_sp(2);
+
+	Vector3f _error_attitude = _attitude_sp - _attitude_now;
+
+	// get the raw gyro data and correct for thermal errors
+	Vector3f rates_now;
+
+	if (_selected_gyro == 0) {
+		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_0[0]) * _sensor_correction.gyro_scale_0[0];
+		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_0[1]) * _sensor_correction.gyro_scale_0[1];
+		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_0[2]) * _sensor_correction.gyro_scale_0[2];
+
+	} else if (_selected_gyro == 1) {
+		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_1[0]) * _sensor_correction.gyro_scale_1[0];
+		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_1[1]) * _sensor_correction.gyro_scale_1[1];
+		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_1[2]) * _sensor_correction.gyro_scale_1[2];
+
+	} else if (_selected_gyro == 2) {
+		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_2[0]) * _sensor_correction.gyro_scale_2[0];
+		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_2[1]) * _sensor_correction.gyro_scale_2[1];
+		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_2[2]) * _sensor_correction.gyro_scale_2[2];
+
+	} else {
+		rates_now(0) = _sensor_gyro.x;
+		rates_now(1) = _sensor_gyro.y;
+		rates_now(2) = _sensor_gyro.z;
+	}
+
+	// rotate corrected measurements from sensor to body frame
+	rates_now = _board_rotation * rates_now;
+
+	// correct for in-run bias errors
+	rates_now(0) -= _sensor_bias.gyro_x_bias;
+	rates_now(1) -= _sensor_bias.gyro_y_bias;
+	rates_now(2) -= _sensor_bias.gyro_z_bias;
+
+	_ude.atiitude_rate_now[0] = rates_now(0);
+	_ude.atiitude_rate_now[1] = rates_now(1);
+	_ude.atiitude_rate_now[2] = rates_now(2);
+
+	Vector3f _error_attitude_rate = - rates_now;
+
+	Vector3f _error_total = lamda_ude * _error_attitude + _error_attitude_rate;
+
+	_ude.u_l[0] = I_quadrotor(0) * K_ude(0) * _error_total(0)  + I_quadrotor(0) * lamda_ude * _error_attitude_rate(0);
+	_ude.u_l[1] = I_quadrotor(1) * K_ude(1) * _error_total(1)  + I_quadrotor(1) * lamda_ude * _error_attitude_rate(1);
+	_ude.u_l[2] = I_quadrotor(2) * K_ude(2) * _error_total(2)  + I_quadrotor(2) * lamda_ude * _error_attitude_rate(2);
+
+	_ude.u_d[0] = I_quadrotor(0) / T_ude(0) * (_error_total(0) + K_ude(0) * integral_ude(0));
+	_ude.u_d[1] = I_quadrotor(1) / T_ude(1) * (_error_total(1) + K_ude(1) * integral_ude(1));
+	_ude.u_d[2] = I_quadrotor(2) / T_ude(2) * (_error_total(2) + K_ude(2) * integral_ude(2));
+
+	_ude.u_total[0] = _ude.u_l[0] + _ude.u_d[0];
+	_ude.u_total[1] = _ude.u_l[1] + _ude.u_d[1];
+	_ude.u_total[2] = _ude.u_l[2] + _ude.u_d[2];
+
+	/* update integral only if motors are providing enough thrust to be effective */
+	if (_thrust_sp > MIN_TAKEOFF_THRUST) {
+		for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
+			// Check for positive control saturation
+			bool positive_saturation =
+				((i == AXIS_INDEX_ROLL) && _saturation_status.flags.roll_pos) ||
+				((i == AXIS_INDEX_PITCH) && _saturation_status.flags.pitch_pos) ||
+				((i == AXIS_INDEX_YAW) && _saturation_status.flags.yaw_pos);
+
+			// Check for negative control saturation
+			bool negative_saturation =
+				((i == AXIS_INDEX_ROLL) && _saturation_status.flags.roll_neg) ||
+				((i == AXIS_INDEX_PITCH) && _saturation_status.flags.pitch_neg) ||
+				((i == AXIS_INDEX_YAW) && _saturation_status.flags.yaw_neg);
+
+			// prevent further positive control saturation
+			if (positive_saturation) {
+				_error_total(i) = math::min(_error_total(i), 0.0f);
+
+			}
+
+			// prevent further negative control saturation
+			if (negative_saturation) {
+				_error_total(i) = math::max(_error_total(i), 0.0f);
+
+			}
+
+			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
+			float integral = integral_ude(i) +  _error_total(i) * dt;
+
+			if (PX4_ISFINITE(integral) && integral > -integral_limit_ude(i) && integral < integral_limit_ude(i)) {
+				integral_ude(i) = integral;
+
+			}
+		}
+	}
+
+	/* explicitly limit the integrator state */
+	for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
+		integral_ude(i) = math::constrain(integral_ude(i), -integral_limit_ude(i), integral_limit_ude(i));
+	}
+
+	_ude.integral_ude[0] = integral_ude(0);
+	_ude.integral_ude[1] = integral_ude(1);
+	_ude.integral_ude[2] = integral_ude(2);
+}
+
+
+
 
 /**
  * Attitude controller.
@@ -775,16 +927,9 @@ MulticopterAttitudeControl::run()
 
 				}
 
+				control_attitude_ude(dt);
+
 				/* publish ude ontroller status */
-				_ude.u_l[0] = 1.0f;
-				_ude.u_l[1] = 2.0f;
-				_ude.u_l[2] = 3.0f;
-				_ude.u_d[0] = 4.0f;
-				_ude.u_d[1] = 5.0f;
-				_ude.u_d[2] = 6.0f;
-				_ude.u_total[0] = _ude.u_l[0] + _ude.u_d[0];
-				_ude.u_total[1] = _ude.u_l[1] + _ude.u_d[1];
-				_ude.u_total[2] = _ude.u_l[2] + _ude.u_d[2];
 				_ude.timestamp = hrt_absolute_time();
 
 				if (_ude_pub != nullptr) {
@@ -813,6 +958,7 @@ MulticopterAttitudeControl::run()
 
 					_rates_sp.zero();
 					_rates_int.zero();
+					integral_ude.zero();
 					_thrust_sp = 0.0f;
 					_att_control.zero();
 
