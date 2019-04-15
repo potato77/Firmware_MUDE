@@ -392,6 +392,9 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 		integral_ude.zero();
 	}
 
+	vehicle_attitude_setpoint_poll();
+	_ude.thrust_sp = _v_att_sp.thrust;
+
 	Quatf q_now(_v_att.q);
 
 	Eulerf _attitude_now = q_now;
@@ -851,7 +854,7 @@ MulticopterAttitudeControl::run()
 			{
 				control_attitude_ude(dt);
 
-				/* publish ude ontroller status */
+				/* publish ude controller status */
 				_ude.timestamp = hrt_absolute_time();
 
 				if (_ude_pub != nullptr) {
@@ -860,6 +863,34 @@ MulticopterAttitudeControl::run()
 				} else {
 					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
 				}
+
+				/* publish actuator controls */
+				_actuators.control[0] = (PX4_ISFINITE(_ude.u_total[0])) ? _ude.u_total[0] : 0.0f;
+				_actuators.control[1] = (PX4_ISFINITE(_ude.u_total[1])) ? _ude.u_total[1] : 0.0f;
+				_actuators.control[2] = (PX4_ISFINITE(_ude.u_total[2])) ? _ude.u_total[2] : 0.0f;
+				_actuators.control[3] = (PX4_ISFINITE(_ude.thrust_sp)) ? _ude.thrust_sp : 0.0f;
+				_actuators.control[7] = _v_att_sp.landing_gear;
+				_actuators.timestamp = hrt_absolute_time();
+				_actuators.timestamp_sample = _sensor_gyro.timestamp;
+
+				/* scale effort by battery status */
+				if (_bat_scale_en.get() && _battery_status.scale > 0.0f) {
+					for (int i = 0; i < 4; i++) {
+						_actuators.control[i] *= _battery_status.scale;
+					}
+				}
+
+				if (!_actuators_0_circuit_breaker_enabled) {
+					if (_actuators_0_pub != nullptr) {
+
+						orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
+
+					} else if (_actuators_id) {
+						_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);
+					}
+
+				}
+
 			}
 			// default pid control
 			else
