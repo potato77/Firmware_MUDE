@@ -1,5 +1,7 @@
 # uORB topic for ude attitude control
 
+float32 thrust_sp
+
 float32[3] attitude_now
 float32[3] attitude_sp
 
