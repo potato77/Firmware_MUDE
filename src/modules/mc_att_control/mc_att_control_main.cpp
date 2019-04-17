@@ -145,15 +145,17 @@ MulticopterAttitudeControl::parameters_updated()
 	I_quadrotor(1) = _Iyy.get();
 	I_quadrotor(2) = _Izz.get();
 
-	K_ude(0) = _K_roll_ude.get();
-	K_ude(1) = _K_pitch_ude.get();
-	K_ude(2) = _K_yaw_ude.get();
+	Kp_ude(0) = _Kp_roll_ude.get();
+	Kp_ude(1) = _Kp_pitch_ude.get();
+	Kp_ude(2) = _Kp_yaw_ude.get();
+
+	Kd_ude(0) = _Kd_roll_ude.get();
+	Kd_ude(1) = _Kd_pitch_ude.get();
+	Kd_ude(2) = _Kd_yaw_ude.get();
 
 	T_ude(0) = _T_roll_ude.get();
 	T_ude(1) = _T_pitch_ude.get();
 	T_ude(2) = _T_yaw_ude.get();
-
-	lamda_ude = _lamda_ude.get();
 
 	integral_limit_ude(0) = _integral_limit_roll_ude.get();
 	integral_limit_ude(1) = _integral_limit_pitch_ude.get();
@@ -451,69 +453,36 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 
 	Vector3f _error_attitude_rate = - rates_now;
 
-	Vector3f _error_total = lamda_ude * _error_attitude + _error_attitude_rate;
+	_ude.u_l[0] = I_quadrotor(0) * (Kp_ude(0) * _error_attitude(0) + Kd_ude(0) * _error_attitude_rate(0));
+	_ude.u_l[1] = I_quadrotor(1) * (Kp_ude(1) * _error_attitude(1) + Kd_ude(1) * _error_attitude_rate(1));
+	_ude.u_l[2] = I_quadrotor(2) * (Kp_ude(2) * _error_attitude(2) + Kd_ude(2) * _error_attitude_rate(2));
 
-	_ude.u_l[0] = I_quadrotor(0) * K_ude(0) * _error_total(0)  + I_quadrotor(0) * lamda_ude * _error_attitude_rate(0);
-	_ude.u_l[1] = I_quadrotor(1) * K_ude(1) * _error_total(1)  + I_quadrotor(1) * lamda_ude * _error_attitude_rate(1);
-	_ude.u_l[2] = I_quadrotor(2) * K_ude(2) * _error_total(2)  + I_quadrotor(2) * lamda_ude * _error_attitude_rate(2);
+	_ude.u_d[0] = I_quadrotor(0) / T_ude(0) * (Kd_ude(0) * _error_attitude(0) + _error_attitude_rate(0) + Kp_ude(0) * integral_ude(0));
+	_ude.u_d[1] = I_quadrotor(1) / T_ude(1) * (Kd_ude(1) * _error_attitude(1) + _error_attitude_rate(1) + Kp_ude(1) * integral_ude(1));
+	_ude.u_d[2] = I_quadrotor(2) / T_ude(2) * (Kd_ude(2) * _error_attitude(2) + _error_attitude_rate(2) + Kp_ude(2) * integral_ude(2));
 
-	_ude.u_d[0] = I_quadrotor(0) / T_ude(0) * (_error_total(0) + K_ude(0) * integral_ude(0));
-	_ude.u_d[1] = I_quadrotor(1) / T_ude(1) * (_error_total(1) + K_ude(1) * integral_ude(1));
-	_ude.u_d[2] = I_quadrotor(2) / T_ude(2) * (_error_total(2) + K_ude(2) * integral_ude(2));
+	/* explicitly limit the integrator state */
+	for (int i = 0; i < 3; i++) 
+	{
+		// Perform the integration using a first order method and do not propagate the result if out of range or invalid
+		float integral = integral_ude(i) +  _error_attitude(i) * dt;
+		
+		if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
+		{
+			integral_ude(i) = integral;
+		}
+
+		_ude.u_d[i] = math::constrain(_ude.u_d[i], -integral_limit_ude(i), integral_limit_ude(i));
+	}
 
 	_ude.u_total[0] = _ude.u_l[0] + _ude.u_d[0];
 	_ude.u_total[1] = _ude.u_l[1] + _ude.u_d[1];
 	_ude.u_total[2] = _ude.u_l[2] + _ude.u_d[2];
 
-	/* update integral only if motors are providing enough thrust to be effective */
-	if (_thrust_sp > MIN_TAKEOFF_THRUST) {
-		for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
-			// Check for positive control saturation
-			bool positive_saturation =
-				((i == AXIS_INDEX_ROLL) && _saturation_status.flags.roll_pos) ||
-				((i == AXIS_INDEX_PITCH) && _saturation_status.flags.pitch_pos) ||
-				((i == AXIS_INDEX_YAW) && _saturation_status.flags.yaw_pos);
-
-			// Check for negative control saturation
-			bool negative_saturation =
-				((i == AXIS_INDEX_ROLL) && _saturation_status.flags.roll_neg) ||
-				((i == AXIS_INDEX_PITCH) && _saturation_status.flags.pitch_neg) ||
-				((i == AXIS_INDEX_YAW) && _saturation_status.flags.yaw_neg);
-
-			// prevent further positive control saturation
-			if (positive_saturation) {
-				_error_total(i) = math::min(_error_total(i), 0.0f);
-
-			}
-
-			// prevent further negative control saturation
-			if (negative_saturation) {
-				_error_total(i) = math::max(_error_total(i), 0.0f);
-
-			}
-
-			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
-			float integral = integral_ude(i) +  _error_total(i) * dt;
-
-			if (PX4_ISFINITE(integral) && integral > -integral_limit_ude(i) && integral < integral_limit_ude(i)) {
-				integral_ude(i) = integral;
-
-			}
-		}
-	}
-
-	/* explicitly limit the integrator state */
-	for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
-		integral_ude(i) = math::constrain(integral_ude(i), -integral_limit_ude(i), integral_limit_ude(i));
-	}
-
 	_ude.integral_ude[0] = integral_ude(0);
 	_ude.integral_ude[1] = integral_ude(1);
 	_ude.integral_ude[2] = integral_ude(2);
 }
-
-
-
 
 /**
  * Attitude controller.

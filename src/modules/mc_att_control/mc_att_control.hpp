@@ -193,13 +193,15 @@ private:
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
 		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
 		(ParamFloat<px4::params::UDE_IZZ>) _Izz,
-		(ParamFloat<px4::params::UDE_K_ROLL>) _K_roll_ude,
-		(ParamFloat<px4::params::UDE_K_PITCH>) _K_pitch_ude,
-		(ParamFloat<px4::params::UDE_K_YAW>) _K_yaw_ude,
+		(ParamFloat<px4::params::UDE_KP_ROLL>) _Kp_roll_ude,
+		(ParamFloat<px4::params::UDE_KP_PITCH>) _Kp_pitch_ude,
+		(ParamFloat<px4::params::UDE_KP_YAW>) _Kp_yaw_ude,
+		(ParamFloat<px4::params::UDE_KD_ROLL>) _Kd_roll_ude,
+		(ParamFloat<px4::params::UDE_KD_PITCH>) _Kd_pitch_ude,
+		(ParamFloat<px4::params::UDE_KD_YAW>) _Kd_yaw_ude,
 		(ParamFloat<px4::params::UDE_T_ROLL>) _T_roll_ude,
 		(ParamFloat<px4::params::UDE_T_PITCH>) _T_pitch_ude,
 		(ParamFloat<px4::params::UDE_T_YAW>) _T_yaw_ude,
-		(ParamFloat<px4::params::UDE_LAMDA>) _lamda_ude,
 		(ParamFloat<px4::params::UDE_INT_LIM_1>) _integral_limit_roll_ude,
 		(ParamFloat<px4::params::UDE_INT_LIM_2>) _integral_limit_pitch_ude,
 		(ParamFloat<px4::params::UDE_INT_LIM_3>) _integral_limit_yaw_ude,
@@ -264,9 +266,9 @@ private:
 
     int switch_ude;
 	matrix::Vector3f I_quadrotor;
-	matrix::Vector3f K_ude;
+	matrix::Vector3f Kp_ude;
+	matrix::Vector3f Kd_ude;
 	matrix::Vector3f T_ude;
-	float lamda_ude;
 	matrix::Vector3f integral_limit_ude;
 
 	matrix::Vector3f _attitude_p;		/**< P gain for attitude control */
