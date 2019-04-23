@@ -123,6 +123,9 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_thrust_sp = 0.0f;
 	_att_control.zero();
 
+	attitude_dot_sp_last.zero();
+	attitude_sp_last.zero();
+
 	/* initialize thermal corrections as we might not immediately get a topic update (only non-zero values) */
 	for (unsigned i = 0; i < 3; i++) {
 		// used scale factors to unity
@@ -140,6 +143,8 @@ MulticopterAttitudeControl::parameters_updated()
 	/* Store some of the parameters in a more convenient way & precompute often-used values */
 	/* ude parameter */
 	switch_ude = _switch_ude.get();
+
+	T_filter_ude = _ude_T_filter.get();
 
 	I_quadrotor(0) = _Ixx.get();
 	I_quadrotor(1) = _Iyy.get();
@@ -382,7 +387,7 @@ MulticopterAttitudeControl::sensor_bias_poll()
 }
 
 /**
- * UDE-based Attitude controller.   -qyp
+ * UDE-based Attitude controller.   -qyp_ude
  * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
  * Output: '_rates_sp' vector, '_thrust_sp'
  */
@@ -401,17 +406,9 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 
 	Eulerf _attitude_now = q_now;
 
-	_ude.attitude_now[0] = _attitude_now(0);
-	_ude.attitude_now[1] = _attitude_now(1);
-	_ude.attitude_now[2] = _attitude_now(2);
-
 	Quatf q_sp(_v_att_sp.q_d);
 
 	Eulerf _attitude_sp = q_sp;
-
-	_ude.attitude_sp[0] = _attitude_sp(0);
-	_ude.attitude_sp[1] = _attitude_sp(1);
-	_ude.attitude_sp[2] = _attitude_sp(2);
 
 	Vector3f _error_attitude = _attitude_sp - _attitude_now;
 
@@ -447,19 +444,49 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	rates_now(1) -= _sensor_bias.gyro_y_bias;
 	rates_now(2) -= _sensor_bias.gyro_z_bias;
 
-	_ude.atiitude_rate_now[0] = rates_now(0);
-	_ude.atiitude_rate_now[1] = rates_now(1);
-	_ude.atiitude_rate_now[2] = rates_now(2);
+	Vector3f attitude_dot_sp;
 
-	Vector3f _error_attitude_rate = - rates_now;
+	attitude_dot_sp(0) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(0) + _attitude_sp(0) - attitude_sp_last(0));
+	attitude_dot_sp(1) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(1) + _attitude_sp(1) - attitude_sp_last(1));
+	attitude_dot_sp(2) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(2) + _attitude_sp(2) - attitude_sp_last(2));
 
-	_ude.u_l[0] = I_quadrotor(0) * (Kp_ude(0) * _error_attitude(0) + Kd_ude(0) * _error_attitude_rate(0));
-	_ude.u_l[1] = I_quadrotor(1) * (Kp_ude(1) * _error_attitude(1) + Kd_ude(1) * _error_attitude_rate(1));
-	_ude.u_l[2] = I_quadrotor(2) * (Kp_ude(2) * _error_attitude(2) + Kd_ude(2) * _error_attitude_rate(2));
+	/* limit rates */
+	for (int i = 0; i < 3; i++) 
+	{
+		attitude_dot_sp(i) = math::constrain(attitude_dot_sp(i), -_mc_rate_max(i), _mc_rate_max(i));
+	}
 
-	_ude.u_d[0] = I_quadrotor(0) / T_ude(0) * (Kd_ude(0) * _error_attitude(0) + _error_attitude_rate(0) + Kp_ude(0) * integral_ude(0));
-	_ude.u_d[1] = I_quadrotor(1) / T_ude(1) * (Kd_ude(1) * _error_attitude(1) + _error_attitude_rate(1) + Kp_ude(1) * integral_ude(1));
-	_ude.u_d[2] = I_quadrotor(2) / T_ude(2) * (Kd_ude(2) * _error_attitude(2) + _error_attitude_rate(2) + Kp_ude(2) * integral_ude(2));
+	attitude_sp_last(0) = _attitude_sp(0);
+	attitude_sp_last(1) = _attitude_sp(1);
+	attitude_sp_last(2) = _attitude_sp(2);
+	attitude_dot_sp_last = attitude_dot_sp;
+
+    //Error for attitude_rate
+	Vector3f _error_attitude_rate = attitude_dot_sp - rates_now;
+
+	_ude.u_l_kp[0] = I_quadrotor(0) * Kp_ude(0) * _error_attitude(0);
+	_ude.u_l_kp[1] = I_quadrotor(1) * Kp_ude(1) * _error_attitude(1);
+	_ude.u_l_kp[2] = I_quadrotor(2) * Kp_ude(2) * _error_attitude(2);
+
+	_ude.u_l_kd[0] = I_quadrotor(0) * Kd_ude(0) * _error_attitude_rate(0);
+	_ude.u_l_kd[1] = I_quadrotor(1) * Kd_ude(1) * _error_attitude_rate(1);
+	_ude.u_l_kd[2] = I_quadrotor(2) * Kd_ude(2) * _error_attitude_rate(2);
+
+	_ude.u_d_ep[0] = I_quadrotor(0) / T_ude(0) * Kd_ude(0) * _error_attitude(0);
+	_ude.u_d_ep[1] = I_quadrotor(1) / T_ude(1) * Kd_ude(1) * _error_attitude(1);
+	_ude.u_d_ep[2] = I_quadrotor(2) / T_ude(2) * Kd_ude(2) * _error_attitude(2);
+
+	_ude.u_d_ev[0] = I_quadrotor(0) / T_ude(0) * _error_attitude_rate(0);
+	_ude.u_d_ev[1] = I_quadrotor(1) / T_ude(1) * _error_attitude_rate(1);
+	_ude.u_d_ev[2] = I_quadrotor(2) / T_ude(2) * _error_attitude_rate(2);
+
+	_ude.u_d_int[0] = I_quadrotor(0) / T_ude(0) * Kp_ude(0) * integral_ude(0);
+	_ude.u_d_int[1] = I_quadrotor(1) / T_ude(1) * Kp_ude(1) * integral_ude(1);
+	_ude.u_d_int[2] = I_quadrotor(2) / T_ude(2) * Kp_ude(2) * integral_ude(2);
+
+	_ude.u_d[0] = _ude.u_d_ep[0] + _ude.u_d_ev[0] + _ude.u_d_int[0];
+	_ude.u_d[1] = _ude.u_d_ep[1] + _ude.u_d_ev[1] + _ude.u_d_int[0];
+	_ude.u_d[2] = _ude.u_d_ep[2] + _ude.u_d_ev[2] + _ude.u_d_int[0];	
 
 	/* explicitly limit the integrator state */
 	for (int i = 0; i < 3; i++) 
@@ -475,13 +502,26 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 		_ude.u_d[i] = math::constrain(_ude.u_d[i], -integral_limit_ude(i), integral_limit_ude(i));
 	}
 
-	_ude.u_total[0] = _ude.u_l[0] + _ude.u_d[0];
-	_ude.u_total[1] = _ude.u_l[1] + _ude.u_d[1];
-	_ude.u_total[2] = _ude.u_l[2] + _ude.u_d[2];
+	_ude.u_total[0] = _ude.u_l_kp[0] + _ude.u_l_kd[0] + _ude.u_d[0];
+	_ude.u_total[1] = _ude.u_l_kp[1] + _ude.u_l_kd[0] + _ude.u_d[1];
+	_ude.u_total[2] = _ude.u_l_kp[2] + _ude.u_l_kd[0] + _ude.u_d[2];
 
-	_ude.integral_ude[0] = integral_ude(0);
-	_ude.integral_ude[1] = integral_ude(1);
-	_ude.integral_ude[2] = integral_ude(2);
+	//For log
+	_ude.attitude_sp[0] = _attitude_sp(0);
+	_ude.attitude_sp[1] = _attitude_sp(1);
+	_ude.attitude_sp[2] = _attitude_sp(2);
+
+	_ude.attitude_now[0] = _attitude_now(0);
+	_ude.attitude_now[1] = _attitude_now(1);
+	_ude.attitude_now[2] = _attitude_now(2);
+
+	_ude.attitude_sp_dot[0] = attitude_dot_sp(0);
+	_ude.attitude_sp_dot[1] = attitude_dot_sp(1);
+	_ude.attitude_sp_dot[2] = attitude_dot_sp(2);
+
+	_ude.atitude_rate_now[0] = rates_now(0);
+	_ude.atitude_rate_now[1] = rates_now(1);
+	_ude.atitude_rate_now[2] = rates_now(2);
 }
 
 /**
@@ -819,19 +859,9 @@ MulticopterAttitudeControl::run()
 			}
 
 			// start ude control - qyp
-			if (switch_ude == 1)
+			if (switch_ude != 0)
 			{
 				control_attitude_ude(dt);
-
-				/* publish ude controller status */
-				_ude.timestamp = hrt_absolute_time();
-
-				if (_ude_pub != nullptr) {
-					orb_publish(ORB_ID(ude), _ude_pub, &_ude);
-
-				} else {
-					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
-				}
 
 				/* publish actuator controls */
 				_actuators.control[0] = (PX4_ISFINITE(_ude.u_total[0])) ? _ude.u_total[0] : 0.0f;
@@ -842,6 +872,7 @@ MulticopterAttitudeControl::run()
 				_actuators.timestamp = hrt_absolute_time();
 				_actuators.timestamp_sample = _sensor_gyro.timestamp;
 
+				//Publish the _actuators first
 				/* scale effort by battery status */
 				if (_bat_scale_en.get() && _battery_status.scale > 0.0f) {
 					for (int i = 0; i < 4; i++) {
@@ -858,6 +889,16 @@ MulticopterAttitudeControl::run()
 						_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);
 					}
 
+				}
+
+				/* publish ude controller status */
+				_ude.timestamp = hrt_absolute_time();
+
+				if (_ude_pub != nullptr) {
+					orb_publish(ORB_ID(ude), _ude_pub, &_ude);
+
+				} else {
+					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
 				}
 
 			}

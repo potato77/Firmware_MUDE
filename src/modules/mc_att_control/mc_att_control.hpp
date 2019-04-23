@@ -190,6 +190,7 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
+		(ParamFloat<px4::params::UDE_T_FILTER>) _ude_T_filter,
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
 		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
 		(ParamFloat<px4::params::UDE_IZZ>) _Izz,
@@ -265,6 +266,7 @@ private:
 	)
 
     int switch_ude;
+	float T_filter_ude;
 	matrix::Vector3f I_quadrotor;
 	matrix::Vector3f Kp_ude;
 	matrix::Vector3f Kd_ude;
@@ -281,6 +283,12 @@ private:
 	matrix::Vector3f _mc_rate_max;		/**< attitude rate limits in stabilized modes */
 	matrix::Vector3f _auto_rate_max;	/**< attitude rate limits in auto modes */
 	matrix::Vector3f _acro_rate_max;	/**< max attitude rates in acro mode */
+
+	matrix::Vector3f attitude_dot_sp_last;    // rates_sp_last for ude
+	matrix::Vector3f attitude_sp_last; // attitude_sp_last for ude
+
+
+
 
 };
 
