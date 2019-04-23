@@ -6,7 +6,7 @@ float32[3] attitude_now
 float32[3] attitude_sp
 
 float32[3] attitude_sp_dot
-float32[3] atitude_rate_now
+float32[3] attitude_rate_now
 
 float32[3] u_l_kp                     # feedback linearization
 float32[3] u_l_kd

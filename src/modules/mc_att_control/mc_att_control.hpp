@@ -56,6 +56,7 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/ude.h>
+#include <uORB/topics/passivity.h>
 /**
  * Multicopter attitude control app start / stop handling function
  */
@@ -124,6 +125,11 @@ private:
 	void		control_attitude_ude(float dt);
 
 	/**
+	 * Passivity Attitude rates controller.
+	 */
+	void		control_attitude_ps(float dt);
+
+	/**
 	 * Throttle PID attenuation.
 	 */
 	matrix::Vector3f pid_attenuations(float tpa_breakpoint, float tpa_rate);
@@ -149,6 +155,7 @@ private:
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
 	orb_advert_t	_ude_pub{nullptr};		
+	orb_advert_t	_ps_pub{nullptr};	
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id{nullptr};	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -167,9 +174,11 @@ private:
 	struct sensor_correction_s		_sensor_correction {};	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
+	struct	passivity_s _passivity {};
+
 
 	matrix::Vector3f integral_ude;			/**<integral error for ude*/
-
+	matrix::Vector3f integral_ps;			/**<integral error for ps*/
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
@@ -206,6 +215,17 @@ private:
 		(ParamFloat<px4::params::UDE_INT_LIM_1>) _integral_limit_roll_ude,
 		(ParamFloat<px4::params::UDE_INT_LIM_2>) _integral_limit_pitch_ude,
 		(ParamFloat<px4::params::UDE_INT_LIM_3>) _integral_limit_yaw_ude,
+
+		(ParamFloat<px4::params::PS_KP_ROLL>) _Kp_roll_ps,
+		(ParamFloat<px4::params::PS_KP_PITCH>) _Kp_pitch_ps,
+		(ParamFloat<px4::params::PS_KP_YAW>) _Kp_yaw_ps,
+		(ParamFloat<px4::params::PS_KD_ROLL>) _Kd_roll_ps,
+		(ParamFloat<px4::params::PS_KD_PITCH>) _Kd_pitch_ps,
+		(ParamFloat<px4::params::PS_KD_YAW>) _Kd_yaw_ps,
+		(ParamFloat<px4::params::PS_T_ROLL>) _T_roll_ps,
+		(ParamFloat<px4::params::PS_T_PITCH>) _T_pitch_ps,
+		(ParamFloat<px4::params::PS_T_YAW>) _T_yaw_ps,
+		(ParamFloat<px4::params::PS_TP>) _Tp_ps,	
 
 		(ParamFloat<px4::params::MC_ROLL_P>) _roll_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _roll_rate_p,
@@ -273,6 +293,11 @@ private:
 	matrix::Vector3f T_ude;
 	matrix::Vector3f integral_limit_ude;
 
+	matrix::Vector3f Kp_ps;
+	matrix::Vector3f Kd_ps;
+	matrix::Vector3f T_ps;
+	float Tp_ps;
+
 	matrix::Vector3f _attitude_p;		/**< P gain for attitude control */
 	matrix::Vector3f _rate_p;		/**< P gain for angular rate error */
 	matrix::Vector3f _rate_i;		/**< I gain for angular rate error */
@@ -287,8 +312,9 @@ private:
 	matrix::Vector3f attitude_dot_sp_last;    // rates_sp_last for ude
 	matrix::Vector3f attitude_sp_last; // attitude_sp_last for ude
 
-
-
+	matrix::Vector3f error_last;    // ps
+	matrix::Vector3f z_last; // ps
+	matrix::Vector3f y_last; // ps
 
 };
 
