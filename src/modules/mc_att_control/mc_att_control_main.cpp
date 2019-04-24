@@ -471,10 +471,19 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	attitude_dot_sp(1) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(1) + _attitude_sp(1) - attitude_sp_last(1));
 	attitude_dot_sp(2) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(2) + _attitude_sp(2) - attitude_sp_last(2));
 
+	// attitude_dot_sp(0) = 0.7f * _error_attitude(0);
+	// attitude_dot_sp(1) = 0.7f * _error_attitude(1);
+	// attitude_dot_sp(2) = 0.7f * _error_attitude(2);
+
+	// Feed forward the yaw setpoint rate.
+	Vector3f yaw_feedforward_rate = q_now.inversed().dcm_z();
+	yaw_feedforward_rate *= _v_att_sp.yaw_sp_move_rate * _yaw_ff.get();
+	attitude_dot_sp += yaw_feedforward_rate;
+
 	/* limit rates */
 	for (int i = 0; i < 3; i++) 
 	{
-		attitude_dot_sp(i) = math::constrain(attitude_dot_sp(i), -_mc_rate_max(i), _mc_rate_max(i));
+		attitude_dot_sp(i) = math::constrain(attitude_dot_sp(i), -0.3f, 0.3f);
 	}
 
 	attitude_sp_last(0) = _attitude_sp(0);
@@ -509,8 +518,8 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	_ude.u_d[1] = _ude.u_d_ep[1] + _ude.u_d_ev[1] + _ude.u_d_int[0];
 	_ude.u_d[2] = _ude.u_d_ep[2] + _ude.u_d_ev[2] + _ude.u_d_int[0];	
 
-	/* explicitly limit the integrator state */
-	if (_thrust_sp > MIN_TAKEOFF_THRUST) 
+	//当开始推油门到0.3之后才开始积分
+	if (_ude.thrust_sp > 0.3f) 
 	{
 		for (int i = 0; i < 3; i++) 
 		{
@@ -620,15 +629,29 @@ MulticopterAttitudeControl::control_attitude_ps(float dt)
 	//kd
 	Vector3f z_k;
 	z_k = 1.0f/(Tp_ps + dt)*(Tp_ps * z_last + _error_attitude - error_last);
+
+	// Feed forward the yaw setpoint rate.
+	Vector3f yaw_feedforward_rate = q_now.inversed().dcm_z();
+	yaw_feedforward_rate *= _v_att_sp.yaw_sp_move_rate * _yaw_ff.get();
+	z_k += yaw_feedforward_rate;
+
+	/* limit rates */
+	for (int i = 0; i < 3; i++) 
+	{
+		z_k(i) = math::constrain(z_k(i), -0.2f, 0.2f);
+	}
 	z_last = z_k;
 	error_last = _error_attitude;
 	_passivity.u_kd[0] = I_quadrotor(0) * Kd_ps(0) * z_k(0);
 	_passivity.u_kd[1] = I_quadrotor(1) * Kd_ps(1) * z_k(1);
 	_passivity.u_kd[2] = I_quadrotor(2) * Kd_ps(2) * z_k(2);
 
-	//f
+
+	//f - UDE term
 	Vector3f y_k;
 	y_k = Tp_ps/(Tp_ps + dt) * y_last + dt/(Tp_ps + dt) * _error_attitude;
+
+
 	y_last = y_k;
  
 	_passivity.u_f[0] = I_quadrotor(0) / T_ps(0) * (rates_now(0)- Kp_ps(0) * integral_ps(0) - Kd_ps(0) * y_k(0));
@@ -636,7 +659,7 @@ MulticopterAttitudeControl::control_attitude_ps(float dt)
 	_passivity.u_f[2] = I_quadrotor(2) / T_ps(2) * (rates_now(2)- Kp_ps(2) * integral_ps(2) - Kd_ps(2) * y_k(2));
 
 	/* explicitly limit the integrator state */
-	if (_thrust_sp > MIN_TAKEOFF_THRUST) 
+	if (_passivity.thrust_sp > 0.3f) 
 	{
 		for (int i = 0; i < 3; i++) 
 		{
@@ -657,8 +680,8 @@ MulticopterAttitudeControl::control_attitude_ps(float dt)
 	}
 
 	_passivity.u_total[0] = _passivity.u_kp[0] + _passivity.u_kd[0] - _passivity.u_f[0];
-	_passivity.u_total[1] = _passivity.u_kp[1] + _passivity.u_kd[1] - _passivity.u_f[0];
-	_passivity.u_total[2] = _passivity.u_kp[2] + _passivity.u_kd[2] - _passivity.u_f[0];	
+	_passivity.u_total[1] = _passivity.u_kp[1] + _passivity.u_kd[1] - _passivity.u_f[1];
+	_passivity.u_total[2] = _passivity.u_kp[2] + _passivity.u_kd[2] - _passivity.u_f[2];	
 
 	//For log
 	_passivity.attitude_sp[0] = _attitude_sp(0);
