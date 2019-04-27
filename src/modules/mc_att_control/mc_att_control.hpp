@@ -127,7 +127,12 @@ private:
 	/**
 	 * Passivity Attitude rates controller.
 	 */
-	void		control_attitude_ps(float dt);
+	void		control_attitude_ps1(float dt);
+
+	/**
+	 * Passivity Attitude rates controller.
+	 */
+	void		control_attitude_ps2(float dt);
 
 	/**
 	 * Throttle PID attenuation.
@@ -312,9 +317,15 @@ private:
 	matrix::Vector3f attitude_dot_sp_last;    // rates_sp_last for ude
 	matrix::Vector3f attitude_sp_last; // attitude_sp_last for ude
 
-	matrix::Vector3f error_last;    // ps
-	matrix::Vector3f z_last; // ps
-	matrix::Vector3f y_last; // ps
+	matrix::Vector3f error_last;    // ps type2
+	matrix::Vector3f z_last; // ps type2
+	matrix::Vector3f y_last; // ps type2
+
+	matrix::Vector3f _attitude_last; // ps type1
+	matrix::Vector3f y1_last; // ps type1
+	matrix::Vector3f y2_last; // ps type1
+	matrix::Vector3f y3_last; // ps type1
+
 
 };
 
