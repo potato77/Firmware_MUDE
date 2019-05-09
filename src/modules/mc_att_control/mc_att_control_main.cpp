@@ -427,17 +427,8 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 
 	control_attitude(dt);
 
-	Vector3f attitude_dot_sp;
-	for (int i = 0; i < 3; i++) 
-	{
-		attitude_dot_sp(i) = _rates_sp(i);
-	}
-
-	_ude.thrust_sp = _thrust_sp;
-
 	// get the raw gyro data and correct for thermal errors
 	Vector3f rates_now;
-
 	if (_selected_gyro == 0) {
 		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_0[0]) * _sensor_correction.gyro_scale_0[0];
 		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_0[1]) * _sensor_correction.gyro_scale_0[1];
@@ -467,15 +458,24 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 	rates_now(1) -= _sensor_bias.gyro_y_bias;
 	rates_now(2) -= _sensor_bias.gyro_z_bias;
 
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.attitude_sp_dot[i] = _rates_sp(i);
+		_ude.attitude_rate_now[i] = rates_now(i);
+	}
+	_ude.thrust_sp = _thrust_sp;
+
 
     //Error for attitude_rate
-	Vector3f _error_attitude_rate = attitude_dot_sp - rates_now;
+	Vector3f _error_attitude_rate = _rates_sp - rates_now;
 
 	for (int i = 0; i < 3; i++) 
 	{
 		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _error_attitude_rate(i);
 
-		_ude.u_d_ep[i] = I_quadrotor(i) / T_ude(i) * Kd_ude(i) * _error_attitude_rate(i);
+		//_ude.u_d_ep[i] = I_quadrotor(i) / T_ude(i) * Kd_ude(i) * _error_attitude_rate(i);
+
+		_ude.u_d_ep[i]  = I_quadrotor(i) / T_ude(i) * (-rates_now(i));
 
 		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * Kp_ude(i) * integral_ude(i);
 
@@ -508,11 +508,6 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 	{
 		_ude.u_total[i] = _ude.u_l_kp[i] + _ude.u_d[i];
 	}
-
-	//For log
-	_ude.attitude_sp_dot[0] = attitude_dot_sp(0);
-	_ude.attitude_sp_dot[1] = attitude_dot_sp(1);
-	_ude.attitude_sp_dot[2] = attitude_dot_sp(2);
 }
 
 /**
@@ -584,10 +579,6 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	attitude_dot_sp(0) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(0) + _attitude_sp(0) - attitude_sp_last(0));
 	attitude_dot_sp(1) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(1) + _attitude_sp(1) - attitude_sp_last(1));
 	attitude_dot_sp(2) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(2) + _attitude_sp(2) - attitude_sp_last(2));
-
-	// attitude_dot_sp(0) = 0.7f * _error_attitude(0);
-	// attitude_dot_sp(1) = 0.7f * _error_attitude(1);
-	// attitude_dot_sp(2) = 0.7f * _error_attitude(2);
 
 	// Feed forward the yaw setpoint rate.
 	// Vector3f yaw_feedforward_rate = q_now.inversed().dcm_z();
