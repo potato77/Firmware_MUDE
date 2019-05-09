@@ -418,6 +418,109 @@ MulticopterAttitudeControl::sensor_bias_poll()
  * Output: '_rates_sp' vector, '_thrust_sp'
  */
 void
+MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
+{
+	/* reset integral if disarmed */
+	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
+		integral_ude.zero();
+	}
+
+	control_attitude(dt);
+
+	Vector3f attitude_dot_sp;
+	for (int i = 0; i < 3; i++) 
+	{
+		attitude_dot_sp(i) = _rates_sp(i);
+	}
+
+	_ude.thrust_sp = _thrust_sp;
+
+	// get the raw gyro data and correct for thermal errors
+	Vector3f rates_now;
+
+	if (_selected_gyro == 0) {
+		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_0[0]) * _sensor_correction.gyro_scale_0[0];
+		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_0[1]) * _sensor_correction.gyro_scale_0[1];
+		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_0[2]) * _sensor_correction.gyro_scale_0[2];
+
+	} else if (_selected_gyro == 1) {
+		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_1[0]) * _sensor_correction.gyro_scale_1[0];
+		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_1[1]) * _sensor_correction.gyro_scale_1[1];
+		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_1[2]) * _sensor_correction.gyro_scale_1[2];
+
+	} else if (_selected_gyro == 2) {
+		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_2[0]) * _sensor_correction.gyro_scale_2[0];
+		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_2[1]) * _sensor_correction.gyro_scale_2[1];
+		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_2[2]) * _sensor_correction.gyro_scale_2[2];
+
+	} else {
+		rates_now(0) = _sensor_gyro.x;
+		rates_now(1) = _sensor_gyro.y;
+		rates_now(2) = _sensor_gyro.z;
+	}
+
+	// rotate corrected measurements from sensor to body frame
+	rates_now = _board_rotation * rates_now;
+
+	// correct for in-run bias errors
+	rates_now(0) -= _sensor_bias.gyro_x_bias;
+	rates_now(1) -= _sensor_bias.gyro_y_bias;
+	rates_now(2) -= _sensor_bias.gyro_z_bias;
+
+
+    //Error for attitude_rate
+	Vector3f _error_attitude_rate = attitude_dot_sp - rates_now;
+
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _error_attitude_rate(i);
+
+		_ude.u_d_ep[i] = I_quadrotor(i) / T_ude(i) * Kd_ude(i) * _error_attitude_rate(i);
+
+		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * Kp_ude(i) * integral_ude(i);
+
+		_ude.u_d[i] = _ude.u_d_ep[i] + _ude.u_d_int[i];
+	}
+
+	//当开始推油门到0.3之后才开始积分
+	if (_ude.thrust_sp > 0.3f) 
+	{
+		for (int i = 0; i < 3; i++) 
+		{
+			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
+			float integral = integral_ude(i) +  _error_attitude_rate(i) * dt;
+			//float integral = 0.0f;
+			
+			if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
+			{
+				integral_ude(i) = integral;
+			}
+		}
+		
+	}
+
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.u_d[i] = math::constrain(_ude.u_d[i], -integral_limit_ude(i), integral_limit_ude(i));
+	}
+
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.u_total[i] = _ude.u_l_kp[i] + _ude.u_d[i];
+	}
+
+	//For log
+	_ude.attitude_sp_dot[0] = attitude_dot_sp(0);
+	_ude.attitude_sp_dot[1] = attitude_dot_sp(1);
+	_ude.attitude_sp_dot[2] = attitude_dot_sp(2);
+}
+
+/**
+ * UDE-based Attitude controller.   -qyp_ude
+ * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
+ * Output: '_rates_sp' vector, '_thrust_sp'
+ */
+void
 MulticopterAttitudeControl::control_attitude_ude(float dt)
 {
 	/* reset integral if disarmed */
@@ -470,6 +573,12 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	rates_now(1) -= _sensor_bias.gyro_y_bias;
 	rates_now(2) -= _sensor_bias.gyro_z_bias;
 
+
+	// Vector3f rates_filtered(
+	// _lp_filters_d[0].apply(rates_now(0)),
+	// _lp_filters_d[1].apply(rates_now(1)),
+	// _lp_filters_d[2].apply(rates_now(2)));
+
 	Vector3f attitude_dot_sp;
 
 	attitude_dot_sp(0) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(0) + _attitude_sp(0) - attitude_sp_last(0));
@@ -499,30 +608,16 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
     //Error for attitude_rate
 	Vector3f _error_attitude_rate = attitude_dot_sp - rates_now;
 
-	_ude.u_l_kp[0] = I_quadrotor(0) * Kp_ude(0) * _error_attitude(0);
-	_ude.u_l_kp[1] = I_quadrotor(1) * Kp_ude(1) * _error_attitude(1);
-	_ude.u_l_kp[2] = I_quadrotor(2) * Kp_ude(2) * _error_attitude(2);
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _error_attitude(i);
+		_ude.u_l_kd[i] = I_quadrotor(i) * Kd_ude(i) * _error_attitude_rate(i);
 
-	_ude.u_l_kd[0] = I_quadrotor(0) * Kd_ude(0) * _error_attitude_rate(0);
-	_ude.u_l_kd[1] = I_quadrotor(1) * Kd_ude(1) * _error_attitude_rate(1);
-	_ude.u_l_kd[2] = I_quadrotor(2) * Kd_ude(2) * _error_attitude_rate(2);
-
-	_ude.u_d_ep[0] = I_quadrotor(0) / T_ude(0) * Kd_ude(0) * _error_attitude(0);
-	_ude.u_d_ep[1] = I_quadrotor(1) / T_ude(1) * Kd_ude(1) * _error_attitude(1);
-	_ude.u_d_ep[2] = I_quadrotor(2) / T_ude(2) * Kd_ude(2) * _error_attitude(2);
-
-	_ude.u_d_ev[0] = I_quadrotor(0) / T_ude(0) * _error_attitude_rate(0);
-	_ude.u_d_ev[1] = I_quadrotor(1) / T_ude(1) * _error_attitude_rate(1);
-	_ude.u_d_ev[2] = I_quadrotor(2) / T_ude(2) * _error_attitude_rate(2);
-
-
-	_ude.u_d_int[0] = I_quadrotor(0) / T_ude(0) * Kp_ude(0) * integral_ude(0);
-	_ude.u_d_int[1] = I_quadrotor(1) / T_ude(1) * Kp_ude(1) * integral_ude(1);
-	_ude.u_d_int[2] = I_quadrotor(2) / T_ude(2) * Kp_ude(2) * integral_ude(2);
-
-	_ude.u_d[0] = _ude.u_d_ep[0] + _ude.u_d_ev[0] + _ude.u_d_int[0];
-	_ude.u_d[1] = _ude.u_d_ep[1] + _ude.u_d_ev[1] + _ude.u_d_int[1];
-	_ude.u_d[2] = _ude.u_d_ep[2] + _ude.u_d_ev[2] + _ude.u_d_int[2];	
+		_ude.u_d_ep[i] = I_quadrotor(i) / T_ude(i) * Kd_ude(i) * _error_attitude(i);
+		_ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i) * _error_attitude_rate(i);
+		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * Kp_ude(i) * integral_ude(i);
+		_ude.u_d[i] = _ude.u_d_ep[i] + _ude.u_d_ev[i] + _ude.u_d_int[i];
+	}	
 
 	//当开始推油门到0.3之后才开始积分
 	if (_ude.thrust_sp > 0.3f) 
@@ -546,26 +641,15 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 		_ude.u_d[i] = math::constrain(_ude.u_d[i], -integral_limit_ude(i), integral_limit_ude(i));
 	}
 
-	_ude.u_total[0] = _ude.u_l_kp[0] + _ude.u_l_kd[0] + _ude.u_d[0];
-	_ude.u_total[1] = _ude.u_l_kp[1] + _ude.u_l_kd[1] + _ude.u_d[1];
-	_ude.u_total[2] = _ude.u_l_kp[2] + _ude.u_l_kd[2] + _ude.u_d[2];
-
-	//For log
-	_ude.attitude_sp[0] = _attitude_sp(0);
-	_ude.attitude_sp[1] = _attitude_sp(1);
-	_ude.attitude_sp[2] = _attitude_sp(2);
-
-	_ude.attitude_now[0] = _attitude_now(0);
-	_ude.attitude_now[1] = _attitude_now(1);
-	_ude.attitude_now[2] = _attitude_now(2);
-
-	_ude.attitude_sp_dot[0] = attitude_dot_sp(0);
-	_ude.attitude_sp_dot[1] = attitude_dot_sp(1);
-	_ude.attitude_sp_dot[2] = attitude_dot_sp(2);
-
-	_ude.attitude_rate_now[0] = rates_now(0);
-	_ude.attitude_rate_now[1] = rates_now(1);
-	_ude.attitude_rate_now[2] = rates_now(2);
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.u_total[i] = _ude.u_l_kp[i] + _ude.u_l_kd[i] + _ude.u_d[i];
+		//For log
+		_ude.attitude_sp[i] = _attitude_sp(i);
+		_ude.attitude_now[i] = _attitude_now(i);
+		_ude.attitude_sp_dot[i] = attitude_dot_sp(i);
+		_ude.attitude_rate_now[i] = rates_now(i);
+	}	
 }
 
 /**
@@ -628,30 +712,27 @@ MulticopterAttitudeControl::control_attitude_ps2(float dt)
 
 	//kp
 
-	_passivity.u_kp[0] = I_quadrotor(0) * Kp_ps(0) * _error_attitude(0);
-	_passivity.u_kp[1] = I_quadrotor(1) * Kp_ps(1) * _error_attitude(1);
-	_passivity.u_kp[2] = I_quadrotor(2) * Kp_ps(2) * _error_attitude(2);
-
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_kp[i] = I_quadrotor(i) * Kp_ps(i) * _error_attitude(i);
+	}
 
 	//kd
 	Vector3f z_k;
 	z_k = 1.0f/(Tp_ps + dt)*(Tp_ps * z_last + _error_attitude - error_last);
 
-	// Feed forward the yaw setpoint rate.
-	// Vector3f yaw_feedforward_rate = q_now.inversed().dcm_z();
-	// yaw_feedforward_rate *= _v_att_sp.yaw_sp_move_rate * _yaw_ff.get();
-	// z_k += yaw_feedforward_rate;
-
 	/* limit rates */
-	for (int i = 0; i < 3; i++) 
-	{
-		z_k(i) = math::constrain(z_k(i), -0.2f, 0.2f);
-	}
+	// for (int i = 0; i < 3; i++) 
+	// {
+	// 	z_k(i) = math::constrain(z_k(i), -0.2f, 0.2f);
+	// }
 	z_last = z_k;
 	error_last = _error_attitude;
-	_passivity.u_kd[0] = I_quadrotor(0) * Kd_ps(0) * z_k(0);
-	_passivity.u_kd[1] = I_quadrotor(1) * Kd_ps(1) * z_k(1);
-	_passivity.u_kd[2] = I_quadrotor(2) * Kd_ps(2) * z_k(2);
+
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_kd[i] = I_quadrotor(i) * Kd_ps(i) * z_k(i);
+	}
 
 
 	//f - UDE term
@@ -659,10 +740,11 @@ MulticopterAttitudeControl::control_attitude_ps2(float dt)
 	y_k = 1.0f/(Tp_ps + dt) * (Tp_ps * y_last + dt * _error_attitude);
 
 	y_last = y_k;
- 
-	_passivity.u_f[0] = I_quadrotor(0) / T_ps(0) * (rates_now(0)- Kp_ps(0) * integral_ps(0) - Kd_ps(0) * y_k(0));
-	_passivity.u_f[1] = I_quadrotor(1) / T_ps(1) * (rates_now(1)- Kp_ps(1) * integral_ps(1) - Kd_ps(1) * y_k(1));
-	_passivity.u_f[2] = I_quadrotor(2) / T_ps(2) * (rates_now(2)- Kp_ps(2) * integral_ps(2) - Kd_ps(2) * y_k(2));
+
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_f[i] = I_quadrotor(i) / T_ps(i) * (rates_now(i)- Kp_ps(i) * integral_ps(i) - Kd_ps(i) * y_k(i));
+	}
 
 	/* explicitly limit the integrator state */
 	if (_passivity.thrust_sp > 0.3f) 
@@ -685,22 +767,14 @@ MulticopterAttitudeControl::control_attitude_ps2(float dt)
 		_passivity.u_f[i] = math::constrain(_passivity.u_f[i], -integral_limit_ude(i), integral_limit_ude(i));
 	}
 
-	_passivity.u_total[0] = _passivity.u_kp[0] + _passivity.u_kd[0] - _passivity.u_f[0];
-	_passivity.u_total[1] = _passivity.u_kp[1] + _passivity.u_kd[1] - _passivity.u_f[1];
-	_passivity.u_total[2] = _passivity.u_kp[2] + _passivity.u_kd[2] - _passivity.u_f[2];	
-
-	//For log
-	_passivity.attitude_sp[0] = _attitude_sp(0);
-	_passivity.attitude_sp[1] = _attitude_sp(1);
-	_passivity.attitude_sp[2] = _attitude_sp(2);
-
-	_passivity.attitude_now[0] = _attitude_now(0);
-	_passivity.attitude_now[1] = _attitude_now(1);
-	_passivity.attitude_now[2] = _attitude_now(2);
-
-	_passivity.attitude_rate_now[0] = rates_now(0);
-	_passivity.attitude_rate_now[1] = rates_now(1);
-	_passivity.attitude_rate_now[2] = rates_now(2);
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_total[i] = _passivity.u_kp[i] + _passivity.u_kd[i] - _passivity.u_f[i];
+		//For log
+		_passivity.attitude_sp[i] = _attitude_sp(i);
+		_passivity.attitude_now[i] = _attitude_now(i);
+		_passivity.attitude_rate_now[i] = rates_now(i);
+	}
 }
 
 /**
@@ -729,97 +803,68 @@ MulticopterAttitudeControl::control_attitude_ps1(float dt)
 
 	Vector3f _error_attitude = _attitude_sp - _attitude_now;
 
-	// get the raw gyro data and correct for thermal errors
-	Vector3f rates_now;
-
-	if (_selected_gyro == 0) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_0[0]) * _sensor_correction.gyro_scale_0[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_0[1]) * _sensor_correction.gyro_scale_0[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_0[2]) * _sensor_correction.gyro_scale_0[2];
-
-	} else if (_selected_gyro == 1) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_1[0]) * _sensor_correction.gyro_scale_1[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_1[1]) * _sensor_correction.gyro_scale_1[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_1[2]) * _sensor_correction.gyro_scale_1[2];
-
-	} else if (_selected_gyro == 2) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_2[0]) * _sensor_correction.gyro_scale_2[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_2[1]) * _sensor_correction.gyro_scale_2[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_2[2]) * _sensor_correction.gyro_scale_2[2];
-
-	} else {
-		rates_now(0) = _sensor_gyro.x;
-		rates_now(1) = _sensor_gyro.y;
-		rates_now(2) = _sensor_gyro.z;
-	}
-
-	// rotate corrected measurements from sensor to body frame
-	rates_now = _board_rotation * rates_now;
-
-	// correct for in-run bias errors
-	rates_now(0) -= _sensor_bias.gyro_x_bias;
-	rates_now(1) -= _sensor_bias.gyro_y_bias;
-	rates_now(2) -= _sensor_bias.gyro_z_bias;
-
 	//kp
-	_passivity.u_kp[0] = I_quadrotor(0) * Kp_ps(0) * _error_attitude(0);
-	_passivity.u_kp[1] = I_quadrotor(1) * Kp_ps(1) * _error_attitude(1);
-	_passivity.u_kp[2] = I_quadrotor(2) * Kp_ps(2) * _error_attitude(2);
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_kp[i] = I_quadrotor(i) * Kp_ps(i) * _error_attitude(i);
+	}
 
 	//kd
 	Vector3f z_k;
 	z_k = 1.0f/(Tp_ps + dt)*(Tp_ps * z_last + _error_attitude - error_last);
 
-	// Feed forward the yaw setpoint rate.
-	// Vector3f yaw_feedforward_rate = q_now.inversed().dcm_z();
-	// yaw_feedforward_rate *= _v_att_sp.yaw_sp_move_rate * _yaw_ff.get();
-	// z_k += yaw_feedforward_rate;
-
 	/* limit rates */
-	for (int i = 0; i < 3; i++) 
-	{
-		z_k(i) = math::constrain(z_k(i), -0.2f, 0.2f);
-	}
+	// for (int i = 0; i < 3; i++) 
+	// {
+	// 	z_k(i) = math::constrain(z_k(i), -0.2f, 0.2f);
+	// }
 	z_last = z_k;
 	error_last = _error_attitude;
-	_passivity.u_kd[0] = I_quadrotor(0) * Kd_ps(0) * z_k(0);
-	_passivity.u_kd[1] = I_quadrotor(1) * Kd_ps(1) * z_k(1);
-	_passivity.u_kd[2] = I_quadrotor(2) * Kd_ps(2) * z_k(2);
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_kd[i] = I_quadrotor(i) * Kd_ps(i) * z_k(i);
+	}
 
 	//f - UDE term
 	Vector3f y1_k;
-	y1_k(0) = 1.0f/(T_ps(0) + dt) * (T_ps(0) * y1_last(0) + _attitude_now(0) - _attitude_last(0));
-	y1_k(1) = 1.0f/(T_ps(1) + dt) * (T_ps(1) * y1_last(1) + _attitude_now(1) - _attitude_last(1));
-	y1_k(2) = 1.0f/(T_ps(2) + dt) * (T_ps(2) * y1_last(2) + _attitude_now(2) - _attitude_last(2));
-
-	/* limit rates */
 	for (int i = 0; i < 3; i++) 
 	{
-		y1_k(i) = math::constrain(y1_k(i), -0.2f, 0.2f);
+		y1_k(i) = 1.0f/(T_ps(i) + dt) * (T_ps(i) * y1_last(i) + _attitude_now(i) - _attitude_last(i));
 	}
 
-	_attitude_last(0) = _attitude_now(0);
-	_attitude_last(1) = _attitude_now(1);
-	_attitude_last(2) = _attitude_now(2);
+	/* limit rates */
+	// for (int i = 0; i < 3; i++) 
+	// {
+	// 	y1_k(i) = math::constrain(y1_k(i), -0.2f, 0.2f);
+	// }
+
+	for (int i = 0; i < 3; i++) 
+	{
+		_attitude_last(i) = _attitude_now(i);
+	}
+
 	y1_last = y1_k;
 
 	Vector3f y2_k;
-	y2_k(0) = Kd_ps(0)/(Tp_ps + dt) * (Tp_ps * y2_last(0) + dt * _error_attitude(0));
-	y2_k(1) = Kd_ps(1)/(Tp_ps + dt) * (Tp_ps * y2_last(1) + dt * _error_attitude(1));
-	y2_k(2) = Kd_ps(2)/(Tp_ps + dt) * (Tp_ps * y2_last(2) + dt * _error_attitude(2));
+	for (int i = 0; i < 3; i++) 
+	{
+		y2_k(i) = Kd_ps(i)/(Tp_ps + dt) * (Tp_ps * y2_last(i) + dt * _error_attitude(i));
+	}
 
 	y2_last = y2_k;
 
 	Vector3f y3_k;
-	y3_k(0) = 1.0f/(T_ps(0) + dt) * (T_ps(0) * y3_last(0) + dt * (Kp_ps(0) * integral_ps(0) + y2_k(0)));
-	y3_k(1) = 1.0f/(T_ps(1) + dt) * (T_ps(1) * y3_last(1) + dt * (Kp_ps(1) * integral_ps(1) + y2_k(1)));
-	y3_k(2) = 1.0f/(T_ps(2) + dt) * (T_ps(2) * y3_last(2) + dt * (Kp_ps(2) * integral_ps(2) + y2_k(2)));
+	for (int i = 0; i < 3; i++) 
+	{
+		y3_k(i) = 1.0f/(T_ps(i) + dt) * (T_ps(i) * y3_last(i) + dt * (Kp_ps(i) * integral_ps(i) + y2_k(i)));
+	}
 
 	y3_last = y3_k;
 
-	_passivity.u_f[0] = I_quadrotor(0) * (y1_k(0) - y3_k(0));
-	_passivity.u_f[1] = I_quadrotor(1) * (y1_k(1) - y3_k(1));
-	_passivity.u_f[2] = I_quadrotor(2) * (y1_k(2) - y3_k(2));
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_f[i] = 0.1f*I_quadrotor(i) * (y1_k(i) - y3_k(i));
+	}
 
 	/* explicitly limit the integrator state */
 	if (_passivity.thrust_sp > 0.3f) 
@@ -842,22 +887,17 @@ MulticopterAttitudeControl::control_attitude_ps1(float dt)
 		_passivity.u_f[i] = math::constrain(_passivity.u_f[i], -integral_limit_ude(i), integral_limit_ude(i));
 	}
 
-	_passivity.u_total[0] = _passivity.u_kp[0] + _passivity.u_kd[0] - _passivity.u_f[0];
-	_passivity.u_total[1] = _passivity.u_kp[1] + _passivity.u_kd[1] - _passivity.u_f[1];
-	_passivity.u_total[2] = _passivity.u_kp[2] + _passivity.u_kd[2] - _passivity.u_f[2];	
+	for (int i = 0; i < 3; i++) 
+	{
+		_passivity.u_total[i] = _passivity.u_kp[i] + _passivity.u_kd[i] - _passivity.u_f[i];
+		//For log
+		_passivity.y1[i] = y1_k(i);
+		_passivity.y2[i] = y2_k(i);
+		_passivity.y3[i] = y3_k(i);
 
-	//For log
-	_passivity.attitude_sp[0] = _attitude_sp(0);
-	_passivity.attitude_sp[1] = _attitude_sp(1);
-	_passivity.attitude_sp[2] = _attitude_sp(2);
-
-	_passivity.attitude_now[0] = _attitude_now(0);
-	_passivity.attitude_now[1] = _attitude_now(1);
-	_passivity.attitude_now[2] = _attitude_now(2);
-
-	_passivity.attitude_rate_now[0] = rates_now(0);
-	_passivity.attitude_rate_now[1] = rates_now(1);
-	_passivity.attitude_rate_now[2] = rates_now(2);
+		_passivity.attitude_sp[i] = _attitude_sp(i);
+		_passivity.attitude_now[i] = _attitude_now(i);
+	}
 }
 
 /**
@@ -1195,9 +1235,16 @@ MulticopterAttitudeControl::run()
 			}
 
 			// start ude control - qyp
-			if (switch_ude == 1)
+			if (switch_ude == 1 || switch_ude == 2)
 			{
-				control_attitude_ude(dt);
+				if (switch_ude == 1)
+				{
+					control_attitude_ude(dt);
+				}else if(switch_ude == 2)
+				{
+					control_attitude_cascade_ude(dt);
+				}
+				
 
 				/* publish actuator controls */
 				_actuators.control[0] = (PX4_ISFINITE(_ude.u_total[0])) ? _ude.u_total[0] : 0.0f;
@@ -1239,14 +1286,14 @@ MulticopterAttitudeControl::run()
 
 			}
 			// 2 for passivity control
-			else if((switch_ude == 2 || switch_ude == 3))
+			else if((switch_ude == 3 || switch_ude == 4))
 			{
-				if (switch_ude == 2)
+				if (switch_ude == 3)
 				{
 					//type 1
 					control_attitude_ps1(dt);
 				}
-				else
+				else if (switch_ude == 4)
 				{
 					//type 2
 					control_attitude_ps2(dt);

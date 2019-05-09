@@ -10,6 +10,12 @@ float32[3] attitude_rate_now
 float32[3] u_kp                     # feedback linearization
 float32[3] u_kd
 
+float32[3] y1
+float32[3] y2
+float32[3] y3
+
+
+
 float32[3] u_f                      # uncertainties compensation
 
 float32[3] u_total                  # control input (torque)

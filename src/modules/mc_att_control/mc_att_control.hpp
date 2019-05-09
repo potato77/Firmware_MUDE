@@ -125,6 +125,11 @@ private:
 	void		control_attitude_ude(float dt);
 
 	/**
+	 * UDE-based casecade Attitude rates controller.
+	 */
+	void		control_attitude_cascade_ude(float dt);
+
+	/**
 	 * Passivity Attitude rates controller.
 	 */
 	void		control_attitude_ps1(float dt);
