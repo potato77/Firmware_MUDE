@@ -130,16 +130,6 @@ private:
 	void		control_attitude_cascade_ude(float dt);
 
 	/**
-	 * Passivity Attitude rates controller.
-	 */
-	void		control_attitude_ps1(float dt);
-
-	/**
-	 * Passivity Attitude rates controller.
-	 */
-	void		control_attitude_ps2(float dt);
-
-	/**
 	 * Throttle PID attenuation.
 	 */
 	matrix::Vector3f pid_attenuations(float tpa_breakpoint, float tpa_rate);
@@ -226,17 +216,6 @@ private:
 		(ParamFloat<px4::params::UDE_INT_LIM_2>) _integral_limit_pitch_ude,
 		(ParamFloat<px4::params::UDE_INT_LIM_3>) _integral_limit_yaw_ude,
 
-		(ParamFloat<px4::params::PS_KP_ROLL>) _Kp_roll_ps,
-		(ParamFloat<px4::params::PS_KP_PITCH>) _Kp_pitch_ps,
-		(ParamFloat<px4::params::PS_KP_YAW>) _Kp_yaw_ps,
-		(ParamFloat<px4::params::PS_KD_ROLL>) _Kd_roll_ps,
-		(ParamFloat<px4::params::PS_KD_PITCH>) _Kd_pitch_ps,
-		(ParamFloat<px4::params::PS_KD_YAW>) _Kd_yaw_ps,
-		(ParamFloat<px4::params::PS_T_ROLL>) _T_roll_ps,
-		(ParamFloat<px4::params::PS_T_PITCH>) _T_pitch_ps,
-		(ParamFloat<px4::params::PS_T_YAW>) _T_yaw_ps,
-		(ParamFloat<px4::params::PS_TP>) _Tp_ps,	
-
 		(ParamFloat<px4::params::MC_ROLL_P>) _roll_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _roll_rate_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_I>) _roll_rate_i,
@@ -303,11 +282,6 @@ private:
 	matrix::Vector3f T_ude;
 	matrix::Vector3f integral_limit_ude;
 
-	matrix::Vector3f Kp_ps;
-	matrix::Vector3f Kd_ps;
-	matrix::Vector3f T_ps;
-	float Tp_ps;
-
 	matrix::Vector3f _attitude_p;		/**< P gain for attitude control */
 	matrix::Vector3f _rate_p;		/**< P gain for angular rate error */
 	matrix::Vector3f _rate_i;		/**< I gain for angular rate error */
@@ -321,16 +295,5 @@ private:
 
 	matrix::Vector3f attitude_dot_sp_last;    // rates_sp_last for ude
 	matrix::Vector3f attitude_sp_last; // attitude_sp_last for ude
-
-	matrix::Vector3f error_last;    // ps type2
-	matrix::Vector3f z_last; // ps type2
-	matrix::Vector3f y_last; // ps type2
-
-	matrix::Vector3f _attitude_last; // ps type1
-	matrix::Vector3f y1_last; // ps type1
-	matrix::Vector3f y2_last; // ps type1
-	matrix::Vector3f y3_last; // ps type1
-
-
 };
 
