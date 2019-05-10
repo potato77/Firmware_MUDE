@@ -11,19 +11,15 @@
 
    git clone https://github.com/potato77/Firmware
 
+3. Build Code
+
    cd Firmware
-   
-   Pixhawk 1
 
-   make px4fmu-v3_default 
+   make px4fmu-v3_default (Pixhawk 1&2)
 
-   Pixhawk 4
+   make px4fmu-v5_default (Pixhawk 4)
 
-   make px4fmu-v5_default 
-
-   jMAVSim Simulation
-
-   make posix jmavsim
+   make posix jmavsim (jMAVSim Simulation)
 
 
 # Parameter setting
