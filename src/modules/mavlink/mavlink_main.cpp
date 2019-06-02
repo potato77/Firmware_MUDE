@@ -2087,7 +2087,8 @@ Mavlink::task_main(int argc, char *argv[])
 
 	case MAVLINK_MODE_CONFIG:
 		// Enable a number of interesting streams we want via USB
-		configure_stream("ACTUATOR_CONTROL_TARGET0", 30.0f);
+		// QGC use this mode
+		configure_stream("ACTUATOR_CONTROL_TARGET0", 50.0f);
 		configure_stream("ADSB_VEHICLE");
 		configure_stream("ALTITUDE", 10.0f);
 		configure_stream("ATTITUDE", 50.0f);
@@ -2113,8 +2114,8 @@ Mavlink::task_main(int argc, char *argv[])
 		configure_stream("PING", 1.0f);
 		configure_stream("POSITION_TARGET_GLOBAL_INT", 10.0f);
 		configure_stream("RC_CHANNELS", 10.0f);
-		configure_stream("SERVO_OUTPUT_RAW_0", 20.0f);
-		configure_stream("SERVO_OUTPUT_RAW_1", 20.0f);
+		configure_stream("SERVO_OUTPUT_RAW_0", 50.0f);
+		//configure_stream("SERVO_OUTPUT_RAW_1", 20.0f);
 		configure_stream("SYS_STATUS", 1.0f);
 		configure_stream("SYSTEM_TIME", 1.0f);
 		configure_stream("TIMESYNC", 10.0f);

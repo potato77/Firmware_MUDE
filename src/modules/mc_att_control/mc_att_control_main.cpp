@@ -52,7 +52,7 @@
 #include <mathlib/math/Limits.hpp>
 #include <mathlib/math/Functions.hpp>
 
-#define MIN_TAKEOFF_THRUST    0.2f
+#define MIN_TAKEOFF_THRUST    0.1f
 #define TPA_RATE_LOWER_LIMIT 0.05f
 
 #define AXIS_INDEX_ROLL 0
@@ -120,12 +120,13 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_rates_sp.zero();
 	_rates_int.zero();
 	integral_ude.zero();
-	integral_ps.zero();
 	_thrust_sp = 0.0f;
 	_att_control.zero();
 
 	attitude_dot_sp_last.zero();
 	attitude_sp_last.zero();
+
+	td_v2.zero();
 
 	/* initialize thermal corrections as we might not immediately get a topic update (only non-zero values) */
 	for (unsigned i = 0; i < 3; i++) {
@@ -401,70 +402,36 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 		integral_ude.zero();
 	}
 
+	//yaw control using cascade PID
 	control_attitude(dt);
 
-	// get the raw gyro data and correct for thermal errors
-	Vector3f rates_now;
-	if (_selected_gyro == 0) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_0[0]) * _sensor_correction.gyro_scale_0[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_0[1]) * _sensor_correction.gyro_scale_0[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_0[2]) * _sensor_correction.gyro_scale_0[2];
-
-	} else if (_selected_gyro == 1) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_1[0]) * _sensor_correction.gyro_scale_1[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_1[1]) * _sensor_correction.gyro_scale_1[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_1[2]) * _sensor_correction.gyro_scale_1[2];
-
-	} else if (_selected_gyro == 2) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_2[0]) * _sensor_correction.gyro_scale_2[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_2[1]) * _sensor_correction.gyro_scale_2[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_2[2]) * _sensor_correction.gyro_scale_2[2];
-
-	} else {
-		rates_now(0) = _sensor_gyro.x;
-		rates_now(1) = _sensor_gyro.y;
-		rates_now(2) = _sensor_gyro.z;
-	}
-
-	// rotate corrected measurements from sensor to body frame
-	rates_now = _board_rotation * rates_now;
-
-	// correct for in-run bias errors
-	rates_now(0) -= _sensor_bias.gyro_x_bias;
-	rates_now(1) -= _sensor_bias.gyro_y_bias;
-	rates_now(2) -= _sensor_bias.gyro_z_bias;
-
-	for (int i = 0; i < 3; i++) 
-	{
-		_ude.attitude_sp_dot[i] = _rates_sp(i);
-		_ude.attitude_rate_now[i] = rates_now(i);
-	}
-	_ude.thrust_sp = _thrust_sp;
+	control_attitude_rates(dt);
 
     //Error for attitude_rate
-	Vector3f _error_attitude_rate = _rates_sp - rates_now;
-
 	for (int i = 0; i < 3; i++) 
 	{
-		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _error_attitude_rate(i);
-
-		//_ude.u_d_ep[i] = I_quadrotor(i) / T_ude(i) * Kd_ude(i) * _error_attitude_rate(i);
-
-		_ude.u_d_ep[i]  = I_quadrotor(i) / T_ude(i) * (-rates_now(i));
-
-		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * Kp_ude(i) * integral_ude(i);
-
-		_ude.u_d[i] = _ude.u_d_ep[i] + _ude.u_d_int[i];
+		_ude.error_attitude_rate[i] = _ude.attitude_sp_dot[i] - _ude.attitude_rate_now[i];
 	}
 
-	//当开始推油门到0.3之后才开始积分
-	if (_ude.thrust_sp > 0.3f) 
+	//roll and pitch control using UDE
+	for (int i = 0; i < 2; i++) 
 	{
-		for (int i = 0; i < 3; i++) 
+		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _ude.error_attitude_rate[i];
+
+		_ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i)  * _ude.error_attitude_rate[i];
+
+		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) *  integral_ude(i);
+
+		_ude.u_d[i] = _ude.u_d_ev[i] + _ude.u_d_int[i];
+	}
+
+	//当开始推油门到MIN_TAKEOFF_THRUST之后才开始积分
+	if (_ude.thrust_sp > MIN_TAKEOFF_THRUST) 
+	{
+		for (int i = 0; i < 2; i++) 
 		{
 			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
-			float integral = integral_ude(i) +  _error_attitude_rate(i) * dt;
-			//float integral = 0.0f;
+			float integral = integral_ude(i) + Kp_ude(i) * _ude.error_attitude_rate[i] * dt;
 			
 			if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
 			{
@@ -474,15 +441,37 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 		
 	}
 
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
 		_ude.u_d[i] = math::constrain(_ude.u_d[i], -integral_limit_ude(i), integral_limit_ude(i));
 	}
 
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
 		_ude.u_total[i] = _ude.u_l_kp[i] + _ude.u_d[i];
 	}
+}
+
+float MulticopterAttitudeControl::adrc_fhan(float v1, float v2, float r0, float h0)
+{
+	float d = h0 * h0 * r0;
+	float a0 = h0 * v2;
+	float y = v1 + a0;
+	float a1 = sqrtf(d*(d + 8.0f*fabsf(y)));
+	float a2 = a0 + adrc_sign(y)*(a1-d)*0.5f;
+	float sy = (adrc_sign(y+d) - adrc_sign(y-d))*0.5f;
+	float a = (a0 + y - a2)*sy + a2;
+	float sa = (adrc_sign(a+d) - adrc_sign(a-d))*0.5f;
+	
+	return -r0*(a/d - adrc_sign(a))*sa - r0*adrc_sign(a);
+}
+
+float MulticopterAttitudeControl::adrc_sign(float val)
+{
+	if(val >= 0.0f)
+		return 1.0f;
+	else
+		return -1.0f;
 }
 
 /**
@@ -498,116 +487,87 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 		integral_ude.zero();
 	}
 
-	vehicle_attitude_setpoint_poll();
-	_ude.thrust_sp = _v_att_sp.thrust;
+	//yaw control using cascade PID
+	control_attitude(dt);
 
-	Quatf q_now(_v_att.q);
+	control_attitude_rates(dt);
 
-	Eulerf _attitude_now = q_now;
+	//using fhan to get the attitude_sp_dot
 
-	Quatf q_sp(_v_att_sp.q_d);
+	float td_r = 25.0f;
+	float td_h = 20.0f;
 
-	Eulerf _attitude_sp = q_sp;
-
-	Vector3f _error_attitude = _attitude_sp - _attitude_now;
-
-	// get the raw gyro data and correct for thermal errors
-	Vector3f rates_now;
-
-	if (_selected_gyro == 0) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_0[0]) * _sensor_correction.gyro_scale_0[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_0[1]) * _sensor_correction.gyro_scale_0[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_0[2]) * _sensor_correction.gyro_scale_0[2];
-
-	} else if (_selected_gyro == 1) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_1[0]) * _sensor_correction.gyro_scale_1[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_1[1]) * _sensor_correction.gyro_scale_1[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_1[2]) * _sensor_correction.gyro_scale_1[2];
-
-	} else if (_selected_gyro == 2) {
-		rates_now(0) = (_sensor_gyro.x - _sensor_correction.gyro_offset_2[0]) * _sensor_correction.gyro_scale_2[0];
-		rates_now(1) = (_sensor_gyro.y - _sensor_correction.gyro_offset_2[1]) * _sensor_correction.gyro_scale_2[1];
-		rates_now(2) = (_sensor_gyro.z - _sensor_correction.gyro_offset_2[2]) * _sensor_correction.gyro_scale_2[2];
-
-	} else {
-		rates_now(0) = _sensor_gyro.x;
-		rates_now(1) = _sensor_gyro.y;
-		rates_now(2) = _sensor_gyro.z;
-	}
-
-	// rotate corrected measurements from sensor to body frame
-	rates_now = _board_rotation * rates_now;
-
-	// correct for in-run bias errors
-	rates_now(0) -= _sensor_bias.gyro_x_bias;
-	rates_now(1) -= _sensor_bias.gyro_y_bias;
-	rates_now(2) -= _sensor_bias.gyro_z_bias;
-
-	Vector3f attitude_dot_sp;
-
-	attitude_dot_sp(0) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(0) + _attitude_sp(0) - attitude_sp_last(0));
-	attitude_dot_sp(1) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(1) + _attitude_sp(1) - attitude_sp_last(1));
-	attitude_dot_sp(2) = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(2) + _attitude_sp(2) - attitude_sp_last(2));
-
-	/* limit rates */
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
-		attitude_dot_sp(i) = math::constrain(attitude_dot_sp(i), -3.0f, 3.0f);
-	}
-
-	attitude_sp_last(0) = _attitude_sp(0);
-	attitude_sp_last(1) = _attitude_sp(1);
-	attitude_sp_last(2) = _attitude_sp(2);
-	attitude_dot_sp_last = attitude_dot_sp;
-
-    //Error for attitude_rate
-	Vector3f _error_attitude_rate = attitude_dot_sp - rates_now;
-
-	for (int i = 0; i < 3; i++) 
-	{
-		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _error_attitude(i);
-		_ude.u_l_kd[i] = I_quadrotor(i) * Kd_ude(i) * _error_attitude_rate(i);
-
-		_ude.u_d_ep[i] = I_quadrotor(i) / T_ude(i) * Kd_ude(i) * _error_attitude(i);
-	    _ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i) * _error_attitude_rate(i);
-		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * integral_ude(i);
-		// _ude.u_d[i] = _ude.u_d_ep[i] + _ude.u_d_ev[i] + _ude.u_d_int[i];
-
-		_ude.u_d[i] = _ude.u_d_ep[i] + _ude.u_d_int[i];
+		float fv = adrc_fhan(-_ude.error_attitude[i], td_v2(i), td_r, td_h*dt);
+		td_v2(i) += dt * fv;
+		_ude.attitude_sp_dot_fhan[i] = td_v2(i);
 	}	
 
-	//当开始推油门到0.3之后才开始积分
-	if (_ude.thrust_sp > 0.3f) 
+	_ude.attitude_sp_dot_fhan[2] = _ude.attitude_sp_dot[2];
+
+	//using high-pass filter to get the attitude_sp_dot
+	for (int i = 0; i < 2; i++) 
 	{
-		for (int i = 0; i < 3; i++) 
+		_ude.attitude_sp_dot[i] = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(i) + _ude.attitude_sp[i] - attitude_sp_last(i));
+	}	
+
+	/* limit rates */
+	for (int i = 0; i < 2; i++) 
+	{
+		_ude.attitude_sp_dot[i] = math::constrain(_ude.attitude_sp_dot[i], -4.0f, 4.0f);
+	}
+
+	attitude_sp_last(0) = _ude.attitude_sp[0];
+	attitude_sp_last(1) = _ude.attitude_sp[1];
+	attitude_dot_sp_last = _ude.attitude_sp_dot;
+
+
+    //Error for attitude_rate
+	for (int i = 0; i < 3; i++) 
+	{
+		_ude.error_attitude_rate[i] = _ude.attitude_sp_dot[i] - _ude.attitude_rate_now[i];
+		//_ude.error_attitude_rate[i] = _ude.attitude_sp_dot_fhan[i] - _ude.attitude_rate_now[i];
+	}
+
+	//roll and pitch control using UDE
+	for (int i = 0; i < 2; i++) 
+	{
+		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _ude.error_attitude[i];
+		_ude.u_l_kd[i] = I_quadrotor(i) * Kd_ude(i) * _ude.error_attitude_rate[i];
+
+	    _ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i) * _ude.error_attitude_rate[i];
+		//_ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i) * (_ude.error_attitude_rate[i] + Kd_ude(i) * _ude.error_attitude[i]);
+		
+		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * integral_ude(i);
+
+		_ude.u_d[i] = _ude.u_d_ev[i] + _ude.u_d_int[i];
+	}	
+
+	//当开始推油门到MIN_TAKEOFF_THRUST之后才开始积分
+	if (_ude.thrust_sp > MIN_TAKEOFF_THRUST) 
+	{
+		for (int i = 0; i < 2; i++) 
 		{
 			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
-			//float integral = integral_ude(i) +  Kp_ude(i) * _error_attitude(i) * dt;
-			float integral = integral_ude(i) +  Kp_ude(i) * _error_attitude(i) * dt + Kd_ude(i) * _error_attitude_rate(i) * dt;
+			 float integral = integral_ude(i) +  Kp_ude(i) * _ude.error_attitude[i] * dt + Kd_ude(i) * _ude.error_attitude_rate[i]* dt;
+			//float integral = integral_ude(i) +  Kp_ude(i) * _ude.error_attitude[i] * dt;
 
-			//float integral = 0.0f;
-			
 			if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
 			{
 				integral_ude(i) = integral;
 			}
 		}
-		
 	}
 
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
 		_ude.u_d[i] = math::constrain(_ude.u_d[i], -integral_limit_ude(i), integral_limit_ude(i));
 	}
 
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
 		_ude.u_total[i] = _ude.u_l_kp[i] + _ude.u_l_kd[i] + _ude.u_d[i];
-		//For log
-		_ude.attitude_sp[i] = _attitude_sp(i);
-		_ude.attitude_now[i] = _attitude_now(i);
-		_ude.attitude_sp_dot[i] = attitude_dot_sp(i);
-		_ude.attitude_rate_now[i] = rates_now(i);
 	}	
 }
 
@@ -660,7 +620,7 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	q_mix(3) = math::constrain(q_mix(3), -1.f, 1.f);
 	qd = qd_red * Quatf(cosf(yaw_w * acosf(q_mix(0))), 0, 0, sinf(yaw_w * asinf(q_mix(3))));
 
-	/* quaternion attitude control law, qe is rotation from q to qd */
+	/* quaternion attitude cattitude_sp_dotontrol law, qe is rotation from q to qd */
 	Quatf qe = q.inversed() * qd;
 
 	/* using sin(alpha/2) scaled rotation axis as attitude error (see quaternion definition by axis angle)
@@ -705,6 +665,38 @@ MulticopterAttitudeControl::control_attitude(float dt)
 			_rates_int(2) = 0.0f;
 		}
 	}
+
+	//UDE control
+	if (switch_ude == 1 || switch_ude == 2)
+	{
+		_ude.dt = dt;
+		_ude.thrust_sp = _thrust_sp;
+
+		Eulerf _attitude_now = q;
+		Eulerf _attitude_sp = qd;
+
+		for (int i = 0; i < 3; i++)
+		{
+			_ude.attitude_now[i] = _attitude_now(i);
+			_ude.attitude_sp[i] = _attitude_sp(i);
+			_ude.error_attitude[i] = _attitude_sp(i) - _attitude_now(i);
+		}
+
+		if (switch_ude == 1)
+		{
+			_ude.attitude_sp_dot[2] = _rates_sp(2);
+		}
+		else if(switch_ude == 2)
+		{
+			
+			for (int i = 0; i < 3; i++)
+			{
+				_ude.attitude_sp_dot[i] = _rates_sp(i);
+			}
+			
+		}
+	}
+
 }
 
 /*
@@ -834,8 +826,21 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	/* explicitly limit the integrator state */
 	for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
 		_rates_int(i) = math::constrain(_rates_int(i), -_rate_int_lim(i), _rate_int_lim(i));
-
 	}
+
+	//UDE control
+	if (switch_ude == 1 || switch_ude == 2)
+	{
+		//Copy the attitude rate
+		for (int i = 0; i < 3; i++)
+		{
+			_ude.attitude_rate_now[i] = rates(i);
+		}
+
+		//yaw
+		_ude.u_total[2] = _att_control(2);
+	}
+
 }
 
 void
@@ -913,9 +918,9 @@ MulticopterAttitudeControl::run()
 			float dt = (now - last_run) / 1e6f;
 			last_run = now;
 
-			/* guard against too small (< 2ms) and too large (> 20ms) dt's */
-			if (dt < 0.002f) {
-				dt = 0.002f;
+			/* guard against too small (< 0.2ms) and too large (> 20ms) dt's */
+			if (dt < 0.0002f) {
+				dt = 0.0002f;
 
 			} else if (dt > 0.02f) {
 				dt = 0.02f;
@@ -956,7 +961,6 @@ MulticopterAttitudeControl::run()
 					control_attitude_cascade_ude(dt);
 				}
 				
-
 				/* publish actuator controls */
 				_actuators.control[0] = (PX4_ISFINITE(_ude.u_total[0])) ? _ude.u_total[0] : 0.0f;
 				_actuators.control[1] = (PX4_ISFINITE(_ude.u_total[1])) ? _ude.u_total[1] : 0.0f;
@@ -1060,6 +1064,12 @@ MulticopterAttitudeControl::run()
 					_actuators.control[1] = (PX4_ISFINITE(_att_control(1))) ? _att_control(1) : 0.0f;
 					_actuators.control[2] = (PX4_ISFINITE(_att_control(2))) ? _att_control(2) : 0.0f;
 					_actuators.control[3] = (PX4_ISFINITE(_thrust_sp)) ? _thrust_sp : 0.0f;
+
+					// _actuators.control[0] = 0.0f;
+					// _actuators.control[1] = 0.0f;
+					// _actuators.control[2] = 0.2f;
+					// _actuators.control[3] = 0.5f;
+
 					_actuators.control[7] = _v_att_sp.landing_gear;
 					_actuators.timestamp = hrt_absolute_time();
 					_actuators.timestamp_sample = _sensor_gyro.timestamp;

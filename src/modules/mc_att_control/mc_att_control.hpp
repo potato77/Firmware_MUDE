@@ -56,7 +56,6 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/ude.h>
-#include <uORB/topics/passivity.h>
 /**
  * Multicopter attitude control app start / stop handling function
  */
@@ -129,6 +128,10 @@ private:
 	 */
 	void		control_attitude_cascade_ude(float dt);
 
+	float 		adrc_fhan(float v1, float v2, float r0, float h0);
+
+	float 		adrc_sign(float val);
+
 	/**
 	 * Throttle PID attenuation.
 	 */
@@ -155,7 +158,6 @@ private:
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
 	orb_advert_t	_ude_pub{nullptr};		
-	orb_advert_t	_ps_pub{nullptr};	
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id{nullptr};	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -174,11 +176,8 @@ private:
 	struct sensor_correction_s		_sensor_correction {};	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
-	struct	passivity_s _passivity {};
-
 
 	matrix::Vector3f integral_ude;			/**<integral error for ude*/
-	matrix::Vector3f integral_ps;			/**<integral error for ps*/
 
 	MultirotorMixer::saturation_status _saturation_status{};
 
@@ -295,5 +294,7 @@ private:
 
 	matrix::Vector3f attitude_dot_sp_last;    // rates_sp_last for ude
 	matrix::Vector3f attitude_sp_last; // attitude_sp_last for ude
+
+	matrix::Vector2f td_v2; 
 };
 
