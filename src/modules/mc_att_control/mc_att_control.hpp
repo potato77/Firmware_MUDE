@@ -56,6 +56,7 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/ude.h>
+#include <uORB/topics/mixer.h>
 /**
  * Multicopter attitude control app start / stop handling function
  */
@@ -132,6 +133,8 @@ private:
 
 	float 		adrc_sign(float val);
 
+	void        mixer(float roll,float pitch,float yaw,float thrust);
+
 	/**
 	 * Throttle PID attenuation.
 	 */
@@ -157,7 +160,8 @@ private:
 	orb_advert_t	_v_rates_sp_pub{nullptr};		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
-	orb_advert_t	_ude_pub{nullptr};		
+	orb_advert_t	_ude_pub{nullptr};	
+	orb_advert_t	_mixer_pub{nullptr};		
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id{nullptr};	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -176,6 +180,7 @@ private:
 	struct sensor_correction_s		_sensor_correction {};	/**< sensor thermal corrections */
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
+	struct	mixer_s _mixer {};
 
 	matrix::Vector3f integral_ude;			/**<integral error for ude*/
 
@@ -198,6 +203,7 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
+		(ParamInt<px4::params::MIXER_SWITCH>) _switch_mixer,
 		(ParamFloat<px4::params::UDE_T_FILTER>) _ude_T_filter,
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
 		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
@@ -274,6 +280,7 @@ private:
 	)
 
     int switch_ude;
+	int switch_mixer;
 	float T_filter_ude;
 	matrix::Vector3f I_quadrotor;
 	matrix::Vector3f Kp_ude;

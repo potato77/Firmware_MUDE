@@ -167,10 +167,11 @@ MultirotorMixer::mix(float *outputs, unsigned space)
 	float		min_out = 1.0f;
 	float		max_out = 0.0f;
 
-	// roll = 0.1f;
+	// roll = 0.0f;
 	// pitch = 0.0f;
 	// yaw = 0.0f;
-	// thrust = 0.5f;
+	// thrust = 0.6f;
+	
 	// clean out class variable used to capture saturation
 	_saturation_status.value = 0;
 
@@ -338,7 +339,7 @@ MultirotorMixer::mix(float *outputs, unsigned space)
 	// this will force the caller of the mixer to always supply new slew rate values, otherwise no slew rate limiting will happen
 	_delta_out_max = 0.0f;
 
-	// outputs[0] = 0.1f;
+	//  outputs[0] = 0.1f;
 	//  outputs[1] = 0.2f;
 	//  outputs[2] = 0.3f;
 	//  outputs[3] = 0.4f;

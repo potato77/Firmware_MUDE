@@ -132,6 +132,7 @@ set(msg_files
 	wind_estimate.msg
 	ude.msg
 	passivity.msg
+	mixer.msg
 	)
 
 if(NOT EXTERNAL_MODULES_LOCATION STREQUAL "")

@@ -145,6 +145,7 @@ MulticopterAttitudeControl::parameters_updated()
 	/* Store some of the parameters in a more convenient way & precompute often-used values */
 	/* ude parameter */
 	switch_ude = _switch_ude.get();
+	switch_mixer = _switch_mixer.get();
 
 	T_filter_ude = _ude_T_filter.get();
 
@@ -473,6 +474,57 @@ float MulticopterAttitudeControl::adrc_sign(float val)
 	else
 		return -1.0f;
 }
+
+void
+MulticopterAttitudeControl::mixer(float roll,float pitch,float yaw,float thrust)
+{
+	//log the input
+	_mixer.input_roll   = roll;
+	_mixer.input_pitch  = pitch;
+	_mixer.input_yaw    = yaw;
+	_mixer.input_thrust = thrust;
+
+	//calculate the motor thrust
+	float arm_length = 0.165f;
+	float a  = sqrtf(2.0f)/2.0f*arm_length;
+	float a0 = sqrtf(2.0f)/2.0f;
+	float ct = 8.219e-8f;
+	float cm = 1.513e-9f;
+	float b  = cm/ct;
+
+	thrust = thrust * 20.0f;
+	
+	_mixer.F1 = -a * roll + a * pitch + b * yaw + thrust;
+	_mixer.F2 =  a * roll - a * pitch + b * yaw + thrust;
+	_mixer.F3 =  a * roll + a * pitch - b * yaw + thrust;
+	_mixer.F4 = -a * roll - a * pitch - b * yaw + thrust;
+
+	//calculate the motor throttle
+	float c,d;
+	c = -0.9642f;
+	d = 8.105f;
+	_mixer.throttle1 = (_mixer.F1 - c)/d;
+	_mixer.throttle2 = (_mixer.F2 - c)/d;
+	_mixer.throttle3 = (_mixer.F3 - c)/d;
+	_mixer.throttle4 = (_mixer.F4 - c)/d;
+
+	//Mix back
+	_mixer.output_roll   = -a0 * _mixer.throttle1 + a0 * _mixer.throttle2 + a0 * _mixer.throttle3 - a0 * _mixer.throttle4;
+	_mixer.output_pitch  =  a0 * _mixer.throttle1 - a0 * _mixer.throttle2 + a0 * _mixer.throttle3 - a0 * _mixer.throttle4;
+	_mixer.output_yaw    =  _mixer.throttle1 +  _mixer.throttle2 - _mixer.throttle3 - _mixer.throttle4;
+	_mixer.output_thrust =  _mixer.throttle1 +  _mixer.throttle2 + _mixer.throttle3 + _mixer.throttle4;
+
+	// publish
+	_mixer.timestamp = hrt_absolute_time();
+
+	if (_mixer_pub != nullptr) {
+		orb_publish(ORB_ID(mixer), _mixer_pub, &_mixer);
+
+	} else {
+		_mixer_pub = orb_advertise(ORB_ID(mixer), &_mixer);
+	}
+}
+
 
 /**
  * PD+UDE Attitude and Attitude_rate controller.   					-qyp_ude
@@ -960,15 +1012,25 @@ MulticopterAttitudeControl::run()
 				{
 					control_attitude_cascade_ude(dt);
 				}
-				
-				/* publish actuator controls */
-				_actuators.control[0] = (PX4_ISFINITE(_ude.u_total[0])) ? _ude.u_total[0] : 0.0f;
-				_actuators.control[1] = (PX4_ISFINITE(_ude.u_total[1])) ? _ude.u_total[1] : 0.0f;
-				_actuators.control[2] = (PX4_ISFINITE(_ude.u_total[2])) ? _ude.u_total[2] : 0.0f;
-				_actuators.control[3] = (PX4_ISFINITE(_ude.thrust_sp)) ? _ude.thrust_sp : 0.0f;
+
+				if (switch_mixer == 0)
+				{
+					_actuators.control[0] = (PX4_ISFINITE(_ude.u_total[0])) ? _ude.u_total[0] : 0.0f;
+					_actuators.control[1] = (PX4_ISFINITE(_ude.u_total[1])) ? _ude.u_total[1] : 0.0f;
+					_actuators.control[2] = (PX4_ISFINITE(_ude.u_total[2])) ? _ude.u_total[2] : 0.0f;
+					_actuators.control[3] = (PX4_ISFINITE(_ude.thrust_sp)) ? _ude.thrust_sp : 0.0f;
+				}else
+				{
+					mixer(_ude.u_total[0],_ude.u_total[1],_ude.u_total[2],_ude.thrust_sp);
+					_actuators.control[0] = (PX4_ISFINITE(_mixer.output_roll)) ? _mixer.output_roll : 0.0f;
+					_actuators.control[1] = (PX4_ISFINITE(_mixer.output_pitch)) ? _mixer.output_pitch : 0.0f;
+					_actuators.control[2] = (PX4_ISFINITE(_mixer.output_yaw)) ? _mixer.output_yaw : 0.0f;
+					_actuators.control[3] = (PX4_ISFINITE(_mixer.output_thrust)) ? _mixer.output_thrust : 0.0f;
+				}
 				_actuators.control[7] = _v_att_sp.landing_gear;
 				_actuators.timestamp = hrt_absolute_time();
 				_actuators.timestamp_sample = _sensor_gyro.timestamp;
+
 
 				//Publish the _actuators first
 				/* scale effort by battery status */

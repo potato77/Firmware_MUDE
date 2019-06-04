@@ -41,7 +41,7 @@
 
 //UDE switch 0 for default cascade pid; 1 for cascade ude; 2 for PD+UDE
 PARAM_DEFINE_INT32(UDE_SWITCH, 0);
-
+PARAM_DEFINE_INT32(MIXER_SWITCH, 0);
 //T FILTER
 PARAM_DEFINE_FLOAT(UDE_T_FILTER, 0.2f);
 
