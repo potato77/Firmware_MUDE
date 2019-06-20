@@ -39,9 +39,12 @@
  * @author Anton Babushkin <anton@px4.io>
  */
 
-//UDE switch 0 for default cascade pid; 1 for cascade ude; 2 for PD+UDE
+//UDE switch 0 for default cascade pid; 1 for PD ude; 2 for cascade UDE
 PARAM_DEFINE_INT32(UDE_SWITCH, 0);
+//MIXER_SWITCH 0 for default mixer; 1 for new mixer
 PARAM_DEFINE_INT32(MIXER_SWITCH, 0);
+//TD_SWITCH 0 for default TD; 1 for HighPassFilter; 2 for fhan
+PARAM_DEFINE_INT32(TD_SWITCH, 0);
 //T FILTER
 PARAM_DEFINE_FLOAT(UDE_T_FILTER, 0.2f);
 

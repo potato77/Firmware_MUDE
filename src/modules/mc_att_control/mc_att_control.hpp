@@ -203,6 +203,7 @@ private:
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
+		(ParamInt<px4::params::TD_SWITCH>) _switch_td,
 		(ParamInt<px4::params::MIXER_SWITCH>) _switch_mixer,
 		(ParamFloat<px4::params::UDE_T_FILTER>) _ude_T_filter,
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
@@ -280,6 +281,7 @@ private:
 	)
 
     int switch_ude;
+	int switch_td;
 	int switch_mixer;
 	float T_filter_ude;
 	matrix::Vector3f I_quadrotor;

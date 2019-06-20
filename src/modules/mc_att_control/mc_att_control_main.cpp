@@ -146,6 +146,7 @@ MulticopterAttitudeControl::parameters_updated()
 	/* ude parameter */
 	switch_ude = _switch_ude.get();
 	switch_mixer = _switch_mixer.get();
+	switch_td = _switch_td.get();
 
 	T_filter_ude = _ude_T_filter.get();
 
@@ -485,34 +486,32 @@ MulticopterAttitudeControl::mixer(float roll,float pitch,float yaw,float thrust)
 	_mixer.input_thrust = thrust;
 
 	//calculate the motor thrust
-	float arm_length = 0.165f;
-	float a  = sqrtf(2.0f)/2.0f*arm_length;
-	float a0 = sqrtf(2.0f)/2.0f;
-	float ct = 8.219e-8f;
-	float cm = 1.513e-9f;
-	float b  = cm/ct;
+	float a  = 2.143f;
+	float b  = 13.58f;
+	float c  = 0.25f;
+	float d  = 0.353f;
 
 	thrust = thrust * 20.0f;
 	
-	_mixer.F1 = -a * roll + a * pitch + b * yaw + thrust;
-	_mixer.F2 =  a * roll - a * pitch + b * yaw + thrust;
-	_mixer.F3 =  a * roll + a * pitch - b * yaw + thrust;
-	_mixer.F4 = -a * roll - a * pitch - b * yaw + thrust;
+	_mixer.F1 = -a * roll + a * pitch + b * yaw + c * thrust;
+	_mixer.F2 =  a * roll - a * pitch + b * yaw + c * thrust;
+	_mixer.F3 =  a * roll + a * pitch - b * yaw + c * thrust;
+	_mixer.F4 = -a * roll - a * pitch - b * yaw + c * thrust;
 
 	//calculate the motor throttle
-	float c,d;
-	c = -0.9642f;
-	d = 8.105f;
-	_mixer.throttle1 = (_mixer.F1 - c)/d;
-	_mixer.throttle2 = (_mixer.F2 - c)/d;
-	_mixer.throttle3 = (_mixer.F3 - c)/d;
-	_mixer.throttle4 = (_mixer.F4 - c)/d;
+	float k1,k2;
+	k1 = -0.9642f;
+	k2 = 8.105f;
+	_mixer.throttle1 = (_mixer.F1 - k1)/k2;
+	_mixer.throttle2 = (_mixer.F2 - k1)/k2;
+	_mixer.throttle3 = (_mixer.F3 - k1)/k2;
+	_mixer.throttle4 = (_mixer.F4 - k1)/k2;
 
 	//Mix back
-	_mixer.output_roll   = -a0 * _mixer.throttle1 + a0 * _mixer.throttle2 + a0 * _mixer.throttle3 - a0 * _mixer.throttle4;
-	_mixer.output_pitch  =  a0 * _mixer.throttle1 - a0 * _mixer.throttle2 + a0 * _mixer.throttle3 - a0 * _mixer.throttle4;
-	_mixer.output_yaw    =  _mixer.throttle1 +  _mixer.throttle2 - _mixer.throttle3 - _mixer.throttle4;
-	_mixer.output_thrust =  _mixer.throttle1 +  _mixer.throttle2 + _mixer.throttle3 + _mixer.throttle4;
+	_mixer.output_roll   = -d * _mixer.throttle1 + d * _mixer.throttle2 + d * _mixer.throttle3 - d * _mixer.throttle4;
+	_mixer.output_pitch  =  d * _mixer.throttle1 - d * _mixer.throttle2 + d * _mixer.throttle3 - d * _mixer.throttle4;
+	_mixer.output_yaw    =  c* (_mixer.throttle1 +  _mixer.throttle2 - _mixer.throttle3 - _mixer.throttle4);
+	_mixer.output_thrust =  c* (_mixer.throttle1 +  _mixer.throttle2 + _mixer.throttle3 + _mixer.throttle4);
 
 	// publish
 	_mixer.timestamp = hrt_absolute_time();
@@ -546,7 +545,7 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 
 	//using fhan to get the attitude_sp_dot
 
-	float td_r = 25.0f;
+	float td_r = 50.0f;
 	float td_h = 20.0f;
 
 	for (int i = 0; i < 2; i++) 
@@ -561,25 +560,33 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	//using high-pass filter to get the attitude_sp_dot
 	for (int i = 0; i < 2; i++) 
 	{
-		_ude.attitude_sp_dot[i] = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(i) + _ude.attitude_sp[i] - attitude_sp_last(i));
+		_ude.attitude_sp_dot_hpf[i] = 1.0f/(T_filter_ude + dt) * (T_filter_ude * attitude_dot_sp_last(i) + _ude.attitude_sp[i] - attitude_sp_last(i));
 	}	
 
 	/* limit rates */
 	for (int i = 0; i < 2; i++) 
 	{
-		_ude.attitude_sp_dot[i] = math::constrain(_ude.attitude_sp_dot[i], -4.0f, 4.0f);
+		_ude.attitude_sp_dot_hpf[i] = math::constrain(_ude.attitude_sp_dot_hpf[i], -4.0f, 4.0f);
 	}
 
 	attitude_sp_last(0) = _ude.attitude_sp[0];
 	attitude_sp_last(1) = _ude.attitude_sp[1];
-	attitude_dot_sp_last = _ude.attitude_sp_dot;
+	attitude_dot_sp_last = _ude.attitude_sp_dot_hpf;																																																																																																																																																																																																																																																																																							
 
 
     //Error for attitude_rate
 	for (int i = 0; i < 3; i++) 
 	{
-		_ude.error_attitude_rate[i] = _ude.attitude_sp_dot[i] - _ude.attitude_rate_now[i];
-		//_ude.error_attitude_rate[i] = _ude.attitude_sp_dot_fhan[i] - _ude.attitude_rate_now[i];
+		if(switch_td == 0)
+		{
+			_ude.error_attitude_rate[i] = _ude.attitude_sp_dot[i] - _ude.attitude_rate_now[i];
+		}else if(switch_td == 1)
+		{
+			_ude.error_attitude_rate[i] = _ude.attitude_sp_dot_hpf[i] - _ude.attitude_rate_now[i];
+		}else if(switch_td == 2)
+		{
+			_ude.error_attitude_rate[i] = _ude.attitude_sp_dot_fhan[i] - _ude.attitude_rate_now[i];
+		}	
 	}
 
 	//roll and pitch control using UDE
@@ -732,20 +739,8 @@ MulticopterAttitudeControl::control_attitude(float dt)
 			_ude.attitude_now[i] = _attitude_now(i);
 			_ude.attitude_sp[i] = _attitude_sp(i);
 			_ude.error_attitude[i] = _attitude_sp(i) - _attitude_now(i);
-		}
 
-		if (switch_ude == 1)
-		{
-			_ude.attitude_sp_dot[2] = _rates_sp(2);
-		}
-		else if(switch_ude == 2)
-		{
-			
-			for (int i = 0; i < 3; i++)
-			{
-				_ude.attitude_sp_dot[i] = _rates_sp(i);
-			}
-			
+			_ude.attitude_sp_dot[i] = _rates_sp(i);
 		}
 	}
 

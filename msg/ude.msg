@@ -10,6 +10,7 @@ float32[3] error_attitude
 
 float32[3] attitude_sp_dot
 float32[3] attitude_sp_dot_fhan
+float32[3] attitude_sp_dot_hpf
 float32[3] attitude_rate_now
 float32[3] error_attitude_rate
 
