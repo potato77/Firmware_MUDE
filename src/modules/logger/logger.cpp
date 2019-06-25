@@ -649,6 +649,7 @@ void Logger::add_default_topics()
 	add_topic("timesync_status");
 	add_topic("mixer", 100);
 	add_topic("ude", 100);
+	add_topic("innerloop_track", 100);
 	
 
 #ifdef CONFIG_ARCH_BOARD_SITL

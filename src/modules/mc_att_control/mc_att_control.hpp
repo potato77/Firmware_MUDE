@@ -57,6 +57,7 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/ude.h>
 #include <uORB/topics/mixer.h>
+#include <uORB/topics/innerloop_track.h>
 /**
  * Multicopter attitude control app start / stop handling function
  */
@@ -161,7 +162,8 @@ private:
 	orb_advert_t	_actuators_0_pub{nullptr};		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
 	orb_advert_t	_ude_pub{nullptr};	
-	orb_advert_t	_mixer_pub{nullptr};		
+	orb_advert_t	_mixer_pub{nullptr};	
+	orb_advert_t	_innerloop_track_pub{nullptr};	
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id{nullptr};	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -181,6 +183,7 @@ private:
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
 	struct	mixer_s _mixer {};
+	struct	innerloop_track_s _innerloop_track {};
 
 	matrix::Vector3f integral_ude;			/**<integral error for ude*/
 

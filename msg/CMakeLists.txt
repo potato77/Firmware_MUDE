@@ -133,6 +133,7 @@ set(msg_files
 	ude.msg
 	passivity.msg
 	mixer.msg
+	innerloop_track.msg
 	)
 
 if(NOT EXTERNAL_MODULES_LOCATION STREQUAL "")

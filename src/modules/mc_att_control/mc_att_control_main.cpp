@@ -589,6 +589,11 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 		}	
 	}
 
+	//for log
+	_innerloop_track.roll_rate_ref  = _ude.error_attitude_rate[0] + _ude.attitude_rate_now[0];
+	_innerloop_track.pitch_rate_ref = _ude.error_attitude_rate[1] + _ude.attitude_rate_now[1];
+	_innerloop_track.yaw_rate_ref   = _ude.error_attitude_rate[2] + _ude.attitude_rate_now[2];
+
 	//roll and pitch control using UDE
 	for (int i = 0; i < 2; i++) 
 	{
@@ -650,6 +655,18 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	/* get estimated and desired vehicle attitude */
 	Quatf q(_v_att.q);
 	Quatf qd(_v_att_sp.q_d);
+
+	//For log
+	Eulerf att_now(q);
+	Eulerf att_ref(qd);
+
+	_innerloop_track.roll  = att_now(0);
+	_innerloop_track.pitch = att_now(1);
+	_innerloop_track.yaw   = att_now(2);
+		
+	_innerloop_track.roll_ref  = att_ref(0);
+	_innerloop_track.pitch_ref = att_ref(1);
+	_innerloop_track.yaw_ref   = att_ref(2);
 
 	/* ensure input quaternions are exactly normalized because acosf(1.00001) == NaN */
 	q.normalize();
@@ -875,7 +892,7 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 		_rates_int(i) = math::constrain(_rates_int(i), -_rate_int_lim(i), _rate_int_lim(i));
 	}
 
-	//UDE control
+	//UDE control 1 for UDE 2 for cascade UDE
 	if (switch_ude == 1 || switch_ude == 2)
 	{
 		//Copy the attitude rate
@@ -887,7 +904,20 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 		//yaw
 		_ude.u_total[2] = _att_control(2);
 	}
-
+	
+	if(switch_ude == 0 || switch_ude == 2)
+	{
+		//for log
+		_innerloop_track.roll_rate_ref  = _rates_sp(0);
+		_innerloop_track.pitch_rate_ref = _rates_sp(1);
+		_innerloop_track.yaw_rate_ref   = _rates_sp(2);
+	}
+	
+	//for log
+	_innerloop_track.roll_rate  = rates(0);
+	_innerloop_track.pitch_rate = rates(1);
+	_innerloop_track.yaw_rate   = rates(2);
+	
 }
 
 void
@@ -1056,6 +1086,16 @@ MulticopterAttitudeControl::run()
 					_ude_pub = orb_advertise(ORB_ID(ude), &_ude);
 				}
 
+				/* publish innerloop_track */
+				_innerloop_track.timestamp = hrt_absolute_time();
+
+				if (_innerloop_track_pub != nullptr) {
+					orb_publish(ORB_ID(innerloop_track), _innerloop_track_pub, &_innerloop_track);
+
+				} else {
+					_innerloop_track_pub = orb_advertise(ORB_ID(innerloop_track), &_innerloop_track);
+				}
+
 			}
 			// default pid control
 			else
@@ -1147,6 +1187,16 @@ MulticopterAttitudeControl::run()
 							_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);
 						}
 
+					}
+
+					/* publish innerloop_track */
+					_innerloop_track.timestamp = hrt_absolute_time();
+
+					if (_innerloop_track_pub != nullptr) 
+					{
+						orb_publish(ORB_ID(innerloop_track), _innerloop_track_pub, &_innerloop_track);
+					} else {
+						_innerloop_track_pub = orb_advertise(ORB_ID(innerloop_track), &_innerloop_track);
 					}
 
 					/* publish controller status */
