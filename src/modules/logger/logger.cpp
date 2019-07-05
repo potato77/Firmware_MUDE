@@ -606,7 +606,7 @@ void Logger::add_default_topics()
 	add_topic("actuator_outputs", 100);
 	//add_topic("airspeed", 200);
 	//add_topic("att_pos_mocap", 50);
-	add_topic("battery_status", 500);
+	add_topic("battery_status", 50);
 	//add_topic("camera_capture");
 	//add_topic("camera_trigger");
 	add_topic("cpuload");
@@ -618,7 +618,7 @@ void Logger::add_default_topics()
 	//add_topic("input_rc", 200);
 	//add_topic("iridiumsbd_status");
 	//add_topic("landing_target_pose");
-	add_topic("manual_control_setpoint", 200);
+	add_topic("manual_control_setpoint", 50);
 	//add_topic("mission");
 	//add_topic("mission_result");
 	//add_topic("optical_flow", 50);
@@ -647,9 +647,9 @@ void Logger::add_default_topics()
 	//add_topic("vtol_vehicle_status", 200);
 	//add_topic("wind_estimate", 200);
 	add_topic("timesync_status");
-	add_topic("mixer", 100);
-	add_topic("ude", 100);
-	add_topic("innerloop_track", 100);
+	//add_topic("mixer", 100);
+	//add_topic("ude", 100);
+	//add_topic("innerloop_track", 100);
 	
 
 #ifdef CONFIG_ARCH_BOARD_SITL

@@ -2047,13 +2047,13 @@ Mavlink::task_main(int argc, char *argv[])
 		break;
 
 	case MAVLINK_MODE_ONBOARD:
-		configure_stream("ACTUATOR_CONTROL_TARGET0", 10.0f);
+		//configure_stream("ACTUATOR_CONTROL_TARGET0", 10.0f);
 		configure_stream("ATTITUDE_TARGET", 10.0f);
 		configure_stream("ESTIMATOR_STATUS", 1.0f);
 		configure_stream("EXTENDED_SYS_STATE", 5.0f);
 		configure_stream("HIGHRES_IMU", 10.0f);
 		configure_stream("HOME_POSITION", 0.5f);
-		configure_stream("LOCAL_POSITION_NED", 50.0f);
+		configure_stream("LOCAL_POSITION_NED", 60.0f);
 		configure_stream("PING", 1.0f);
 		configure_stream("POSITION_TARGET_LOCAL_NED", 10.0f);
 		configure_stream("RC_CHANNELS", 10.0f);
