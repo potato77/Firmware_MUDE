@@ -1,6 +1,9 @@
 uorb start
 param load
 dataman start
+param set EKF2_GPS_P_NOISE 0.1
+param set EKF2_GPS_V_NOISE 0.5
+param set EKF2_HGT_MODE 1
 param set MAV_SYS_ID 1
 param set BAT_N_CELLS 3
 param set CAL_ACC0_ID 1376264
@@ -24,7 +27,6 @@ param set COM_RC_IN_MODE 1
 param set EKF2_AID_MASK 1
 param set EKF2_ANGERR_INIT 0.01
 param set EKF2_GBIAS_INIT 0.01
-param set EKF2_HGT_MODE 0
 param set EKF2_MAG_TYPE 1
 param set MAV_TYPE 2
 param set MC_PITCH_P 6
@@ -62,7 +64,7 @@ navigator start
 ekf2 start
 mc_pos_control start
 mc_att_control start
-mixer load /dev/pwm_output0 ROMFS/px4fmu_common/mixers/quad_w.main.mix
+mixer load /dev/pwm_output0 ROMFS/px4fmu_common/mixers/quad_x.main.mix
 mavlink start -x -u 14556 -r 4000000
 mavlink start -x -u 14557 -r 4000000 -m onboard -o 14540
 mavlink stream -r 50 -s POSITION_TARGET_LOCAL_NED -u 14556

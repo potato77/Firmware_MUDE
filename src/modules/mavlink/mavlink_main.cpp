@@ -2055,7 +2055,7 @@ Mavlink::task_main(int argc, char *argv[])
 		configure_stream("HOME_POSITION", 0.5f);
 		configure_stream("LOCAL_POSITION_NED", 60.0f);
 		configure_stream("PING", 1.0f);
-		configure_stream("POSITION_TARGET_LOCAL_NED", 10.0f);
+		//configure_stream("POSITION_TARGET_LOCAL_NED", 10.0f);
 		configure_stream("RC_CHANNELS", 10.0f);
 		configure_stream("SYS_STATUS", 10.0f);
 		configure_stream("SYSTEM_TIME", 1.0f);
