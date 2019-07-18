@@ -58,6 +58,7 @@
 #include <uORB/topics/ude.h>
 #include <uORB/topics/mixer.h>
 #include <uORB/topics/innerloop_track.h>
+#include <uORB/topics/mavlink_log.h>
 /**
  * Multicopter attitude control app start / stop handling function
  */
@@ -125,6 +126,9 @@ private:
 	 */
 	void		control_attitude_ude(float dt);
 
+	// UDE with motor dynamics
+	void		control_attitude_m_ude(float dt);
+
 	/**
 	 * UDE-based casecade Attitude rates controller.
 	 */
@@ -135,6 +139,10 @@ private:
 	float 		adrc_sign(float val);
 
 	void        mixer(float roll,float pitch,float yaw,float thrust);
+
+	float       thrust_to_throttle(float thrust);
+
+	float       throttle_to_thrust(float throttle);
 
 	/**
 	 * Throttle PID attenuation.
@@ -163,7 +171,7 @@ private:
 	orb_advert_t	_controller_status_pub{nullptr};	/**< controller status publication */
 	orb_advert_t	_ude_pub{nullptr};	
 	orb_advert_t	_mixer_pub{nullptr};	
-	orb_advert_t	_innerloop_track_pub{nullptr};	
+    orb_advert_t 	mavlink_log_pub{nullptr};
 
 	orb_id_t _rates_sp_id{nullptr};		/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id{nullptr};	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -183,7 +191,6 @@ private:
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
 	struct	mixer_s _mixer {};
-	struct	innerloop_track_s _innerloop_track {};
 
 	matrix::Vector3f integral_ude;			/**<integral error for ude*/
 
@@ -205,9 +212,12 @@ private:
 	matrix::Dcmf _board_rotation;			/**< rotation matrix for the orientation that the board is mounted */
 
 	DEFINE_PARAMETERS(
+		(ParamInt<px4::params::INPUT_SOURCE>) _input_source,
+		(ParamInt<px4::params::USE_PLATFORM>) _use_platform,
 		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
 		(ParamInt<px4::params::TD_SWITCH>) _switch_td,
 		(ParamInt<px4::params::MIXER_SWITCH>) _switch_mixer,
+		(ParamFloat<px4::params::UDE_MOTOR_A>) _ude_motor_a,
 		(ParamFloat<px4::params::UDE_T_FILTER>) _ude_T_filter,
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
 		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
@@ -218,6 +228,9 @@ private:
 		(ParamFloat<px4::params::UDE_KD_ROLL>) _Kd_roll_ude,
 		(ParamFloat<px4::params::UDE_KD_PITCH>) _Kd_pitch_ude,
 		(ParamFloat<px4::params::UDE_KD_YAW>) _Kd_yaw_ude,
+		(ParamFloat<px4::params::UDE_KM_ROLL>) _Km_roll_ude,
+		(ParamFloat<px4::params::UDE_KM_PITCH>) _Km_pitch_ude,
+		(ParamFloat<px4::params::UDE_KM_YAW>) _Km_yaw_ude,
 		(ParamFloat<px4::params::UDE_T_ROLL>) _T_roll_ude,
 		(ParamFloat<px4::params::UDE_T_PITCH>) _T_pitch_ude,
 		(ParamFloat<px4::params::UDE_T_YAW>) _T_yaw_ude,
@@ -283,13 +296,25 @@ private:
 		(ParamFloat<px4::params::VT_WV_YAWR_SCL>) _vtol_wv_yaw_rate_scale		/**< Scale value [0, 1] for yaw rate setpoint  */
 	)
 
+	int input_source;
+	int use_platform;
     int switch_ude;
 	int switch_td;
 	int switch_mixer;
 	float T_filter_ude;
+
+	float input_source_time;
+	float ude_motor_a;
+
+	float print_time;
+	float last_print_time;
+
+	matrix::Vector3f torque_est_last;
+
 	matrix::Vector3f I_quadrotor;
 	matrix::Vector3f Kp_ude;
 	matrix::Vector3f Kd_ude;
+	matrix::Vector3f Km_ude;
 	matrix::Vector3f T_ude;
 	matrix::Vector3f integral_limit_ude;
 

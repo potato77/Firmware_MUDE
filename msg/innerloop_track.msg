@@ -13,3 +13,6 @@ float32 yaw_rate
 float32 roll_rate_ref	
 float32 pitch_rate_ref	
 float32 yaw_rate_ref
+
+
+float32[4] qd

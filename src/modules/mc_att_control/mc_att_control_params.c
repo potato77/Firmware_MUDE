@@ -39,7 +39,13 @@
  * @author Anton Babushkin <anton@px4.io>
  */
 
-//UDE switch 0 for default cascade pid; 1 for PD ude; 2 for cascade UDE
+//select the INPUT_SOURCE, 0 for non-input; 1 for step input; 2 for sin input;
+PARAM_DEFINE_INT32(INPUT_SOURCE, 0);
+
+//USE_PLATFORM 0 for normal mode; 1 for use platform
+PARAM_DEFINE_INT32(USE_PLATFORM, 0);
+
+//UDE switch 0 for default cascade pid; 1 for PD ude; 2 for cascade UDE; 3 for m UDE
 PARAM_DEFINE_INT32(UDE_SWITCH, 0);
 //MIXER_SWITCH 0 for default mixer; 1 for new mixer
 PARAM_DEFINE_INT32(MIXER_SWITCH, 0);
@@ -57,6 +63,8 @@ PARAM_DEFINE_FLOAT(UDE_IYY, 0.01f);
 //Quadrotor Izz
 PARAM_DEFINE_FLOAT(UDE_IZZ, 0.015f);
 
+PARAM_DEFINE_FLOAT(UDE_MOTOR_A, 0.04f);
+
 //Kp
 PARAM_DEFINE_FLOAT(UDE_KP_ROLL, 3.0f);
 PARAM_DEFINE_FLOAT(UDE_KP_PITCH, 3.0f);
@@ -66,6 +74,11 @@ PARAM_DEFINE_FLOAT(UDE_KP_YAW, 1.0f);
 PARAM_DEFINE_FLOAT(UDE_KD_ROLL, 5.0f);
 PARAM_DEFINE_FLOAT(UDE_KD_PITCH, 5.0f);
 PARAM_DEFINE_FLOAT(UDE_KD_YAW, 2.0f);
+
+//Km
+PARAM_DEFINE_FLOAT(UDE_KM_ROLL, 3.0f);
+PARAM_DEFINE_FLOAT(UDE_KM_PITCH, 3.0f);
+PARAM_DEFINE_FLOAT(UDE_KM_YAW, 0.0f);
 
 //T
 PARAM_DEFINE_FLOAT(UDE_T_ROLL, 0.2f);

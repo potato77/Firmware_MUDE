@@ -623,7 +623,7 @@ void Logger::add_default_topics()
 	//add_topic("mission_result");
 	//add_topic("optical_flow", 50);
 	add_topic("ping");
-	add_topic("position_setpoint_triplet", 200);
+	//add_topic("position_setpoint_triplet", 200);
 	add_topic("rate_ctrl_status", 100);
 	//add_topic("safety");
 	add_topic("sensor_combined", 100);
@@ -631,24 +631,24 @@ void Logger::add_default_topics()
 	//add_topic("system_power", 500);
 	//add_topic("tecs_status", 200);
 	//add_topic("telemetry_status");
-	add_topic("vehicle_attitude", 30);
+	add_topic("vehicle_attitude", 100);
 	add_topic("vehicle_attitude_setpoint", 100);
 	//add_topic("vehicle_command");
 	//add_topic("vehicle_global_position", 200);
 	//add_topic("vehicle_gps_position");
 	//add_topic("vehicle_land_detected");
-	add_topic("vehicle_local_position", 100);
-	add_topic("vehicle_local_position_setpoint", 100);
+	//add_topic("vehicle_local_position", 100);
+	//add_topic("vehicle_local_position_setpoint", 100);
 	add_topic("vehicle_rates_setpoint", 30);
 	//add_topic("vehicle_status", 200);
 	//add_topic("vehicle_status_flags");
-	add_topic("vehicle_vision_attitude");
-	add_topic("vehicle_vision_position");
+	//add_topic("vehicle_vision_attitude");
+	//add_topic("vehicle_vision_position");
 	//add_topic("vtol_vehicle_status", 200);
 	//add_topic("wind_estimate", 200);
 	add_topic("timesync_status");
-	//add_topic("mixer", 100);
-	//add_topic("ude", 100);
+	add_topic("mixer", 50);
+	add_topic("ude", 50);
 	//add_topic("innerloop_track", 100);
 	
 
@@ -668,6 +668,8 @@ void Logger::add_default_topics()
 	add_topic("vehicle_global_position_groundtruth", 100);
 	add_topic("vehicle_local_position_groundtruth", 100);
 	add_topic("vehicle_roi");
+	add_topic("mixer", 50);
+	add_topic("ude", 50);
 #endif
 }
 
