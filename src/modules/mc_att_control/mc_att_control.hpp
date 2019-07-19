@@ -33,6 +33,11 @@
 
 #include <lib/mixer/mixer.h>
 #include <mathlib/math/filter/LowPassFilter2p.hpp>
+#include <mathlib/math/filter/LowPassFilter.hpp>
+#include <mathlib/math/filter/HighPassFilter.hpp>
+#include <mathlib/math/filter/LowPassFilter2.hpp>
+#include <mathlib/math/filter/BandPassFilter.hpp>
+#include <mathlib/math/filter/LPFwithDelay.hpp>
 #include <matrix/matrix/math.hpp>
 #include <perf/perf_counter.h>
 #include <px4_config.h>
@@ -57,7 +62,6 @@
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/ude.h>
 #include <uORB/topics/mixer.h>
-#include <uORB/topics/innerloop_track.h>
 #include <uORB/topics/mavlink_log.h>
 /**
  * Multicopter attitude control app start / stop handling function
@@ -202,6 +206,13 @@ private:
 	static constexpr const float initial_update_rate_hz = 250.f; /**< loop update rate used for initialization */
 	float _loop_update_rate_hz{initial_update_rate_hz};          /**< current rate-controller loop update rate in [Hz] */
 
+	math::LowPassFilter LPF[2];
+	math::LowPassFilter2 LPF2[2];
+	math::HighPassFilter HPF[2];
+	math::BandPassFilter BPF[2];
+	math::LPFwithDelay LPFdelay[3];
+
+
 	matrix::Vector3f _rates_prev;			/**< angular rates on previous step */
 	matrix::Vector3f _rates_prev_filtered;		/**< angular rates on previous step (low-pass filtered) */
 	matrix::Vector3f _rates_sp;			/**< angular rates setpoint */
@@ -217,26 +228,19 @@ private:
 		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
 		(ParamInt<px4::params::TD_SWITCH>) _switch_td,
 		(ParamInt<px4::params::MIXER_SWITCH>) _switch_mixer,
-		(ParamFloat<px4::params::UDE_MOTOR_A>) _ude_motor_a,
 		(ParamFloat<px4::params::UDE_T_FILTER>) _ude_T_filter,
 		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
 		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
 		(ParamFloat<px4::params::UDE_IZZ>) _Izz,
-		(ParamFloat<px4::params::UDE_KP_ROLL>) _Kp_roll_ude,
-		(ParamFloat<px4::params::UDE_KP_PITCH>) _Kp_pitch_ude,
-		(ParamFloat<px4::params::UDE_KP_YAW>) _Kp_yaw_ude,
-		(ParamFloat<px4::params::UDE_KD_ROLL>) _Kd_roll_ude,
-		(ParamFloat<px4::params::UDE_KD_PITCH>) _Kd_pitch_ude,
-		(ParamFloat<px4::params::UDE_KD_YAW>) _Kd_yaw_ude,
-		(ParamFloat<px4::params::UDE_KM_ROLL>) _Km_roll_ude,
-		(ParamFloat<px4::params::UDE_KM_PITCH>) _Km_pitch_ude,
-		(ParamFloat<px4::params::UDE_KM_YAW>) _Km_yaw_ude,
-		(ParamFloat<px4::params::UDE_T_ROLL>) _T_roll_ude,
-		(ParamFloat<px4::params::UDE_T_PITCH>) _T_pitch_ude,
-		(ParamFloat<px4::params::UDE_T_YAW>) _T_yaw_ude,
-		(ParamFloat<px4::params::UDE_INT_LIM_1>) _integral_limit_roll_ude,
-		(ParamFloat<px4::params::UDE_INT_LIM_2>) _integral_limit_pitch_ude,
-		(ParamFloat<px4::params::UDE_INT_LIM_3>) _integral_limit_yaw_ude,
+		(ParamFloat<px4::params::UDE_KP>) _Kp_ude,
+
+		(ParamFloat<px4::params::UDE_KD>) _Kd_ude,
+
+		(ParamFloat<px4::params::UDE_KM>) _Km_ude,
+
+		(ParamFloat<px4::params::UDE_T>) _T_ude,
+
+		(ParamFloat<px4::params::UDE_INT_LIM>) _integral_limit_ude,
 
 		(ParamFloat<px4::params::MC_ROLL_P>) _roll_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _roll_rate_p,
@@ -304,12 +308,9 @@ private:
 	float T_filter_ude;
 
 	float input_source_time;
-	float ude_motor_a;
 
 	float print_time;
 	float last_print_time;
-
-	matrix::Vector3f torque_est_last;
 
 	matrix::Vector3f I_quadrotor;
 	matrix::Vector3f Kp_ude;

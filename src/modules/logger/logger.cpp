@@ -648,7 +648,7 @@ void Logger::add_default_topics()
 	//add_topic("wind_estimate", 200);
 	add_topic("timesync_status");
 	add_topic("mixer", 50);
-	add_topic("ude", 50);
+	add_topic("ude", 10);
 	//add_topic("innerloop_track", 100);
 	
 
