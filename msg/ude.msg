@@ -26,13 +26,6 @@ float32[3] u_l_km              ## only for mUDE
 float32[3] u_d
 
 float32[3] torque_ref           ## only for mUDE
-float32[4] actuator_output
-float32[4] throttle_est
-float32[4] thrust_est
-float32 Mx_est
-float32 My_est
-float32 Mz_est
-float32 T_est
 float32[3] torque_est           ## only for mUDE
 
 float32[3] f1_est           ## only for mUDE

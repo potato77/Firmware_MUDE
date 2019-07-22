@@ -47,6 +47,11 @@ namespace math
 void LPFwithDelay::set_constant(float time_constant)
 {
 	T = time_constant;
+}
+
+void LPFwithDelay::initialization(float time_constant)
+{
+	T = time_constant;
 	Output_prev = 0.0f;
 
 	for (int i = 0; i < 10; i++) 

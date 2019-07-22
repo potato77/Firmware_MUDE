@@ -48,11 +48,18 @@ void HighPassFilter2::set_constant(float time_constant1, float time_constant2)
 {
 	T1 = time_constant1;
 	T2 = time_constant2;
+}
+
+void HighPassFilter2::initialization(float time_constant1, float time_constant2)
+{
+	T1 = time_constant1;
+	T2 = time_constant2;
 	output_prev = 0.0f;
 	output_prev_prev = 0.0f;
 	input_prev = 0.0f;
 	input_prev_prev = 0.0f;
 }
+
 
 float HighPassFilter2::update(float input, float dt)
 {

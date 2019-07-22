@@ -172,17 +172,17 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	LPFdelay[0].set_constant(MOTOR_ALPHA);
 	LPFdelay[1].set_constant(MOTOR_ALPHA);
 
-	LPF[0].set_constant(T_f);
-	LPF[1].set_constant(T_f);
+	LPF[0].initialization(T_f);
+	LPF[1].initialization(T_f);
 
-	HPF[0].set_constant(T_f);
-	HPF[1].set_constant(T_f);
+	HPF[0].initialization(T_f);
+	HPF[1].initialization(T_f);
 
-	HPF2[0].set_constant(T_f1, T_f2);
-	HPF2[1].set_constant(T_f1, T_f2);
+	HPF2[0].initialization(T_f1, T_f2);
+	HPF2[1].initialization(T_f1, T_f2);
 
-	BPF[0].set_constant(T_f1, T_f2);
-	BPF[1].set_constant(T_f1, T_f2);
+	BPF[0].initialization(T_f1, T_f2);
+	BPF[1].initialization(T_f1, T_f2);
 
 	_vehicle_status.is_rotary_wing = true;
 
@@ -227,6 +227,18 @@ MulticopterAttitudeControl::parameters_updated()
 	T_f1 = _Tf1.get();
 	T_f2 = _Tf2.get();
 	T_torque = _T_torque.get();
+
+	LPF[0].set_constant(T_f);
+	LPF[1].set_constant(T_f);
+
+	HPF[0].set_constant(T_f);
+	HPF[1].set_constant(T_f);
+
+	HPF2[0].set_constant(T_f1, T_f2);
+	HPF2[1].set_constant(T_f1, T_f2);
+
+	BPF[0].set_constant(T_f1, T_f2);
+	BPF[1].set_constant(T_f1, T_f2);
 
 	Kp_ude(0) = _Kp_ude.get();
 	Kp_ude(1) = _Kp_ude.get();
@@ -617,7 +629,7 @@ void
 MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 {
 	/* reset integral if disarmed */
-	if (_ude.thrust_sp < MIN_TAKEOFF_THRUST) 
+	if (_ude.thrust_sp < MIN_TAKEOFF_THRUST||!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) 
 	{
 		integral_ude.zero();
 
@@ -659,29 +671,6 @@ MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 		_ude.torque_ref[i] = I_quadrotor(i) * _ude.attitude_ddot_ref[i];
 	}
 	
-	orb_copy(ORB_ID(actuator_outputs), _outputs_sub, &_actuator_outputs);
-
-	for (int i = 0; i < 4; i++) 
-	{
-		_ude.actuator_output[i] = _actuator_outputs.output[i];
-		_ude.throttle_est[i] = (_ude.actuator_output[i] - 1000.0f) / 1000.0f;
-		_ude.thrust_est[i] = throttle_to_thrust(_ude.throttle_est[i]);
-	}
-
-	float a = 0.1167;
-	float b = 0.0175;
-	float c = 1.0f;
-
-	_ude.Mx_est = -a * _ude.thrust_est[0] + a * _ude.thrust_est[2] + a * _ude.thrust_est[2] - a * _ude.thrust_est[3];
-	_ude.My_est =  a * _ude.thrust_est[0] - a * _ude.thrust_est[2] + a * _ude.thrust_est[2] - a * _ude.thrust_est[3];
-	_ude.Mz_est =  b * _ude.thrust_est[0] + b * _ude.thrust_est[2] - b * _ude.thrust_est[2] - b * _ude.thrust_est[3];
-	_ude.T_est  =  c * _ude.thrust_est[0] + c * _ude.thrust_est[2] + c * _ude.thrust_est[2] + c * _ude.thrust_est[3];
-
-	// update the torque estimation
-
-	// _ude.torque_est[0] = LPFdelay[0].update(_ude.Mx_est, dt);
-	// _ude.torque_est[1] = LPFdelay[1].update(_ude.My_est, dt);
-
 	_ude.torque_est[0] = LPFdelay[0].update(_ude.u_total[0], dt);
 	_ude.torque_est[1] = LPFdelay[1].update(_ude.u_total[1], dt);
 

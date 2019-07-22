@@ -47,8 +47,14 @@ namespace math
 void LowPassFilter::set_constant(float time_constant)
 {
 	T = time_constant;
+}
+
+void LowPassFilter::initialization(float time_constant)
+{
+	T = time_constant;
 	Output_prev = 0.0f;
 }
+
 
 float LowPassFilter::update(float input, float dt)
 {

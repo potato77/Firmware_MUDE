@@ -47,9 +47,15 @@ namespace math
 void HighPassFilter::set_constant(float time_constant)
 {
 	T = time_constant;
+}
+
+void HighPassFilter::initialization(float time_constant)
+{
+	T = time_constant;
 	Output_prev = 0.0f;
 	Input_prev = 0.0f;
 }
+
 
 float HighPassFilter::update(float input, float dt)
 {

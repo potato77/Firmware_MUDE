@@ -59,6 +59,7 @@ public:
 	 * Change filter parameters
 	 */
 	void set_constant(float time_constant1, float time_constant2);
+	void initialization(float time_constant1, float time_constant2);
 
 	/**
 	 * Add a new raw value to the filter
