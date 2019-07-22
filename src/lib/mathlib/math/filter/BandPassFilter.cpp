@@ -51,19 +51,16 @@ void BandPassFilter::set_constant(float time_constant1, float time_constant2)
 	output_prev = 0.0f;
 	output_prev_prev = 0.0f;
 	input_prev = 0.0f;
-	input_prev_prev = 0.0f;
 }
 
 float BandPassFilter::update(float input, float dt)
 {
 	// do the filtering
-	float output = 1/(T1+T2*dt+dt*dt) * (input - 2*input_prev + input_prev_prev + (2*T1+T2*dt)*output_prev - T1*output_prev_prev);
+	float output = 1/(T1+T2*dt+dt*dt) * (dt*(input - input_prev) + (2*T1+T2*dt)*output_prev - T1*output_prev_prev);
 
 	output_prev_prev = output_prev;
 
 	output_prev = output;
-
-	input_prev_prev = input_prev;
 
 	input_prev = input;
 

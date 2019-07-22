@@ -62,7 +62,7 @@ float LPFwithDelay::update(float input, float dt)
 		input_prev[i] = input_prev[i-1];
 	}
 
-	//0 for now， 10 for 10*dt before (dt =0.004 10*dt = 0.04)
+	//0 for now， 9 for 10*dt before (dt =0.004 10*dt = 0.04)
 	input_prev[0] = input;
 
 	// do the filtering
@@ -72,6 +72,11 @@ float LPFwithDelay::update(float input, float dt)
 
 	// return the value.
 	return output;
+}
+
+float LPFwithDelay::get_delay_output()
+{
+	return input_prev[9];
 }
 
 } // namespace math

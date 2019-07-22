@@ -72,6 +72,9 @@ public:
 	float update(float input, float dt);
 
 
+	float get_delay_output();
+
+
 private:
 	//Previous output
 	float Output_prev;

@@ -33,40 +33,55 @@
  *
  ****************************************************************************/
 
-/// @file	LowPassFilter.cpp
+/// @file	LowPassFilter.h
 /// @brief	A class to implement a second order low pass filter
 /// Author: Leonard Hall <LeonardTHall@gmail.com>
+/// Adapted for PX4 by Andrew Tridgell
 
-#include <px4_defines.h>
-#include "LowPassFilter2.hpp"
-#include <cmath>
+#pragma once
 
 namespace math
 {
-
-void LowPassFilter2::set_constant(float time_constant1, float time_constant2)
+class __EXPORT HighPassFilter2
 {
-	T1 = time_constant1;
-	T2 = time_constant2;
-	output_prev = 0.0f;
-	output_prev_prev = 0.0f;
-	input_prev = 0.0f;
-}
+public:
+	// constructor
+	HighPassFilter2(void)
+	{
+		T1 = 0.0f;
+		T2 = 0.0f;
+		output_prev = 0.0f;
+		output_prev_prev = 0.0f;
+		input_prev = 0.0f;
+		input_prev_prev = 0.0f;
+	}
 
-float LowPassFilter2::update(float input, float dt)
-{
-	// do the filtering
-	float output = 1/(T1+T2*dt+dt*dt) * (dt*(input - input_prev) + (2*T1+T2*dt)*output_prev - T1*output_prev_prev);
+	/**
+	 * Change filter parameters
+	 */
+	void set_constant(float time_constant1, float time_constant2);
 
-	output_prev_prev = output_prev;
+	/**
+	 * Add a new raw value to the filter
+	 *
+	 * @return retrieve the filtered result
+	 */
+	float update(float input, float dt);
 
-	output_prev = output;
 
-	input_prev = input;
+private:
+	//Previous output
+	float output_prev;
 
-	// return the value.
-	return output;
-}
+	float output_prev_prev;
+
+	float input_prev;
+
+	float input_prev_prev;
+
+	//Time constant
+	float T1;
+	float T2;
+};
 
 } // namespace math
-

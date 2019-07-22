@@ -53,7 +53,6 @@ public:
 		output_prev = 0.0f;
 		output_prev_prev = 0.0f;
 		input_prev = 0.0f;
-		input_prev_prev = 0.0f;
 	}
 
 	/**
@@ -76,8 +75,6 @@ private:
 	float output_prev_prev;
 
 	float input_prev;
-
-	float input_prev_prev;
 
 	//Time constant
 	float T1;

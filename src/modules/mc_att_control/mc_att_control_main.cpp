@@ -62,15 +62,15 @@
 
 // 电机动态参数
 #define MOTOR_ALPHA 0.04f
-#define MOTOR_DELAY 0.035f
+#define MOTOR_DELAY 0.04f
 
-// 滤波器时间常数
-#define T_f 0.1f
-#define T_f1 0.5f
-#define T_f2 0.5f
-#define T_torque 1.0f
+#define Ixx 0.01f
+#define Iyy 0.01f
+#define Izz 0.015f
 
-#define omega 0.1f
+#define INT_LIMIT 0.5f
+
+#define omega 1.0f
 
 using namespace matrix;
 
@@ -124,10 +124,44 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	attitude_dot_sp_last.zero();
 	attitude_sp_last.zero();
 
-	td_v2.zero();
-
 	_ude.start_time = 0.0f;
 	_ude.input_time = 0.0f;
+	_ude.thrust_sp = 0.0f;
+
+	_ude.torque_est[0] = 0.0f;
+	_ude.torque_est[1] = 0.0f;
+	_ude.torque_est[2] = 0.0f;
+
+	_ude.f1_est[0] = 0.0f;
+	_ude.f1_est[1] = 0.0f;
+	_ude.f1_est[2] = 0.0f;
+
+	_ude.f1_dot_est[0] = 0.0f;
+	_ude.f1_dot_est[1] = 0.0f;
+	_ude.f1_dot_est[2] = 0.0f;
+
+	_ude.f2_est[0] = 0.0f;
+	_ude.f2_est[1] = 0.0f;
+	_ude.f2_est[2] = 0.0f;
+
+	_ude.f_est[0] = 0.0f;
+	_ude.f_est[1] = 0.0f;
+	_ude.f_est[2] = 0.0f;
+
+	_ude.u_total[0] = 0.0f;
+	_ude.u_total[1] = 0.0f;
+	_ude.u_total[2] = 0.0f;
+
+	I_quadrotor(0) = Ixx;
+	I_quadrotor(1) = Iyy;
+	I_quadrotor(2) = Izz;
+
+	integral_limit_ude(0) = INT_LIMIT;
+	integral_limit_ude(1) = INT_LIMIT;
+	integral_limit_ude(2) = INT_LIMIT;
+
+	parameters_updated();
+
 
 	last_print_time = 0.0f;
 
@@ -137,7 +171,6 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 
 	LPFdelay[0].set_constant(MOTOR_ALPHA);
 	LPFdelay[1].set_constant(MOTOR_ALPHA);
-	LPFdelay[2].set_constant(MOTOR_ALPHA);
 
 	LPF[0].set_constant(T_f);
 	LPF[1].set_constant(T_f);
@@ -145,8 +178,8 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	HPF[0].set_constant(T_f);
 	HPF[1].set_constant(T_f);
 
-	LPF2[0].set_constant(T_f1, T_f2);
-	LPF2[1].set_constant(T_f1, T_f2);
+	HPF2[0].set_constant(T_f1, T_f2);
+	HPF2[1].set_constant(T_f1, T_f2);
 
 	BPF[0].set_constant(T_f1, T_f2);
 	BPF[1].set_constant(T_f1, T_f2);
@@ -173,7 +206,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 		_sensor_correction.gyro_scale_2[i] = 1.0f;
 	}
 
-	parameters_updated();
+	
 }
 
 void
@@ -190,9 +223,10 @@ MulticopterAttitudeControl::parameters_updated()
 
 	T_filter_ude = _ude_T_filter.get();
 
-	I_quadrotor(0) = _Ixx.get();
-	I_quadrotor(1) = _Iyy.get();
-	I_quadrotor(2) = _Izz.get();
+	T_f = _Tf.get();
+	T_f1 = _Tf1.get();
+	T_f2 = _Tf2.get();
+	T_torque = _T_torque.get();
 
 	Kp_ude(0) = _Kp_ude.get();
 	Kp_ude(1) = _Kp_ude.get();
@@ -209,11 +243,6 @@ MulticopterAttitudeControl::parameters_updated()
 	T_ude(0) = _T_ude.get();
 	T_ude(1) = _T_ude.get();
 	T_ude(2) = _T_ude.get();
-
-	integral_limit_ude(0) = _integral_limit_ude.get();
-	integral_limit_ude(1) = _integral_limit_ude.get();
-	integral_limit_ude(2) = _integral_limit_ude.get();
-	
 
 	/* roll gains */
 	_attitude_p(0) = _roll_p.get();
@@ -464,13 +493,9 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 	{
 		_ude.feedforward[i] = I_quadrotor(i) * _ude.attitude_ddot_ref[i];
 
-		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _ude.error_attitude_rate[i];
+		_ude.u_l_kp[i] = Kp_ude(i) * _ude.error_attitude_rate[i];
 
-		_ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i)  * _ude.error_attitude_rate[i];
-
-		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) *  integral_ude(i);
-
-		_ude.u_d[i] = _ude.u_d_ev[i] + _ude.u_d_int[i];
+		_ude.u_d[i] = I_quadrotor(i) / T_ude(i) * _ude.error_attitude_rate[i] + 1.0f / T_ude(i) *  integral_ude(i);
 	}
 
 	//当开始推油门到MIN_TAKEOFF_THRUST之后才开始积分
@@ -479,9 +504,9 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 		for (int i = 0; i < 2; i++) 
 		{
 			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
-			float integral = integral_ude(i) + Kp_ude(i) * _ude.error_attitude_rate[i] * dt;
+			float integral = integral_ude(i) - Kp_ude(i) * _ude.error_attitude_rate[i] * dt;
 			
-			if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
+			if (PX4_ISFINITE(integral) && integral > -integral_limit_ude(i) && integral < integral_limit_ude(i)) 
 			{
 				integral_ude(i) = integral;
 			}
@@ -496,31 +521,10 @@ MulticopterAttitudeControl::control_attitude_cascade_ude(float dt)
 
 	for (int i = 0; i < 2; i++) 
 	{
-		_ude.u_total[i] = _ude.feedforward[i] + _ude.u_l_kp[i] + _ude.u_d[i];
+		_ude.u_total[i] = _ude.feedforward[i] + _ude.u_l_kp[i] - _ude.u_d[i];
 	}
 }
 
-float MulticopterAttitudeControl::adrc_fhan(float v1, float v2, float r0, float h0)
-{
-	float d = h0 * h0 * r0;
-	float a0 = h0 * v2;
-	float y = v1 + a0;
-	float a1 = sqrtf(d*(d + 8.0f*fabsf(y)));
-	float a2 = a0 + adrc_sign(y)*(a1-d)*0.5f;
-	float sy = (adrc_sign(y+d) - adrc_sign(y-d))*0.5f;
-	float a = (a0 + y - a2)*sy + a2;
-	float sa = (adrc_sign(a+d) - adrc_sign(a-d))*0.5f;
-	
-	return -r0*(a/d - adrc_sign(a))*sa - r0*adrc_sign(a);
-}
-
-float MulticopterAttitudeControl::adrc_sign(float val)
-{
-	if(val >= 0.0f)
-		return 1.0f;
-	else
-		return -1.0f;
-}
 
 void
 MulticopterAttitudeControl::mixer(float roll,float pitch,float yaw,float throttle)
@@ -538,7 +542,7 @@ MulticopterAttitudeControl::mixer(float roll,float pitch,float yaw,float throttl
 
 	// 根据总推力及三轴力矩，计算四个电机的期望推力
 	float a  = 2.143f;
-	float b  = 13.58f;
+	float b  = 14.27f;
 	float c  = 0.25f;
 	
 	_mixer.F1 = -a * roll + a * pitch + b * yaw + c * thrust;
@@ -553,7 +557,7 @@ MulticopterAttitudeControl::mixer(float roll,float pitch,float yaw,float throttl
 	_mixer.throttle4 = thrust_to_throttle(_mixer.F4);
 
 	// Mix back 剩下交由PX4混控进行处理
-	float d  = 0.353f;
+	float d  = 0.354f;
 	_mixer.output_roll   = -d * _mixer.throttle1 + d * _mixer.throttle2 + d * _mixer.throttle3 - d * _mixer.throttle4;
 	_mixer.output_pitch  =  d * _mixer.throttle1 - d * _mixer.throttle2 + d * _mixer.throttle3 - d * _mixer.throttle4;
 	_mixer.output_yaw    =  c * (_mixer.throttle1 +  _mixer.throttle2 - _mixer.throttle3 - _mixer.throttle4);
@@ -572,6 +576,9 @@ MulticopterAttitudeControl::mixer(float roll,float pitch,float yaw,float throttl
 
 float MulticopterAttitudeControl::thrust_to_throttle(float thrust)
 {
+
+	thrust = math::constrain(thrust, 0.0f, 7.0f);
+
 	float throttle;
 	float MOTOR_P1 = -0.0006892f;
 	float MOTOR_P2 = 0.01271f;
@@ -586,6 +593,9 @@ float MulticopterAttitudeControl::thrust_to_throttle(float thrust)
 
 float MulticopterAttitudeControl::throttle_to_thrust(float throttle)
 {
+
+	throttle = math::constrain(throttle, 0.0f, 1.0f);
+
 	float thrust;
 	float MOTOR_P1 = 2.052f;
 	float MOTOR_P2 = -11.11f;
@@ -607,8 +617,29 @@ void
 MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 {
 	/* reset integral if disarmed */
-	if (!_v_control_mode.flag_armed || !_vehicle_status.is_rotary_wing) {
+	if (_ude.thrust_sp < MIN_TAKEOFF_THRUST) 
+	{
 		integral_ude.zero();
+
+		_ude.torque_est[0] = 0.0f;
+		_ude.torque_est[1] = 0.0f;
+		_ude.torque_est[2] = 0.0f;
+
+		_ude.f1_est[0] = 0.0f;
+		_ude.f1_est[1] = 0.0f;
+		_ude.f1_est[2] = 0.0f;
+
+		_ude.f1_dot_est[0] = 0.0f;
+		_ude.f1_dot_est[1] = 0.0f;
+		_ude.f1_dot_est[2] = 0.0f;
+
+		_ude.f2_est[0] = 0.0f;
+		_ude.f2_est[1] = 0.0f;
+		_ude.f2_est[2] = 0.0f;
+
+		_ude.f_est[0] = 0.0f;
+		_ude.f_est[1] = 0.0f;
+		_ude.f_est[2] = 0.0f;
 	}
 
 	//yaw control using cascade PID
@@ -623,27 +654,49 @@ MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 	}
 
 	// update the torque reference
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
 		_ude.torque_ref[i] = I_quadrotor(i) * _ude.attitude_ddot_ref[i];
 	}
 	
-	// update the torque estimation
-	for (int i = 0; i < 3; i++) 
+	orb_copy(ORB_ID(actuator_outputs), _outputs_sub, &_actuator_outputs);
+
+	for (int i = 0; i < 4; i++) 
 	{
-		_ude.torque_est[i] = LPFdelay[i].update(_ude.u_total[i], dt);
+		_ude.actuator_output[i] = _actuator_outputs.output[i];
+		_ude.throttle_est[i] = (_ude.actuator_output[i] - 1000.0f) / 1000.0f;
+		_ude.thrust_est[i] = throttle_to_thrust(_ude.throttle_est[i]);
 	}
 
+	float a = 0.1167;
+	float b = 0.0175;
+	float c = 1.0f;
+
+	_ude.Mx_est = -a * _ude.thrust_est[0] + a * _ude.thrust_est[2] + a * _ude.thrust_est[2] - a * _ude.thrust_est[3];
+	_ude.My_est =  a * _ude.thrust_est[0] - a * _ude.thrust_est[2] + a * _ude.thrust_est[2] - a * _ude.thrust_est[3];
+	_ude.Mz_est =  b * _ude.thrust_est[0] + b * _ude.thrust_est[2] - b * _ude.thrust_est[2] - b * _ude.thrust_est[3];
+	_ude.T_est  =  c * _ude.thrust_est[0] + c * _ude.thrust_est[2] + c * _ude.thrust_est[2] + c * _ude.thrust_est[3];
+
+	// update the torque estimation
+
+	// _ude.torque_est[0] = LPFdelay[0].update(_ude.Mx_est, dt);
+	// _ude.torque_est[1] = LPFdelay[1].update(_ude.My_est, dt);
+
+	_ude.torque_est[0] = LPFdelay[0].update(_ude.u_total[0], dt);
+	_ude.torque_est[1] = LPFdelay[1].update(_ude.u_total[1], dt);
+
 	// update the disturbance estimation
-	for (int i = 0; i < 3; i++) 
+	for (int i = 0; i < 2; i++) 
 	{
-		_ude.f1_est[i] = I_quadrotor(i) * HPF[i].update(_ude.attitude_rate_now[i],dt) + LPF[i].update(_ude.torque_est[i],dt);
+		_ude.f1_est[i] = I_quadrotor(i) * HPF[i].update(_ude.attitude_rate_now[i],dt) - LPF[i].update(_ude.torque_est[i],dt);
 		
-		_ude.f1_dot_est[i] = I_quadrotor(i) * BPF[i].update(_ude.attitude_rate_now[i],dt) + LPF2[i].update(_ude.torque_est[i],dt);
+		_ude.f1_dot_est[i] = I_quadrotor(i) * HPF2[i].update(_ude.attitude_rate_now[i],dt) - BPF[i].update(_ude.torque_est[i],dt);
 
 		_ude.f2_est[i] = 1.0f/T_torque * _ude.torque_est[i] + 1.0f/(T_torque*MOTOR_ALPHA)*integral_ude(i);
 		
 		_ude.f_est[i] = MOTOR_ALPHA * _ude.f2_est[i] + _ude.f1_est[i] + MOTOR_ALPHA * _ude.f1_dot_est[i];
+
+		_ude.f2[i] =1.0f/(MOTOR_ALPHA)* (_ude.u_total[i] - LPFdelay[i].get_delay_output());
 	}
 
 	//roll and pitch control using UDE
@@ -651,15 +704,14 @@ MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 	{
 		_ude.feedforward[i] = I_quadrotor(i) * (_ude.attitude_ddot_ref[i] + MOTOR_ALPHA * _ude.attitude_dddot_ref[i]);
 		
-		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _ude.error_attitude[i];
+		_ude.u_l_kp[i] = Kp_ude(i) * _ude.error_attitude[i];
 
-		_ude.u_l_kd[i] = I_quadrotor(i) * Kd_ude(i) * _ude.error_attitude_rate[i];
+		_ude.u_l_kd[i] = Kd_ude(i) * _ude.error_attitude_rate[i];
 
-		_ude.u_l_km[i] = Km_ude(i) * ( _ude.torque_ref[i] - _ude.torque_est[i] - _ude.f1_est[i]);
+		_ude.u_l_km[i] = Km_ude(i) * ( _ude.torque_ref[i] - _ude.torque_est[i]);
 
-		_ude.u_d[i] = - _ude.f_est[i];
+		_ude.u_d[i] = + Km_ude(i) * _ude.f1_est[i] + _ude.f_est[i];
 	}
-
 
 	//当开始推油门到MIN_TAKEOFF_THRUST之后才开始积分
 	if (_ude.thrust_sp > MIN_TAKEOFF_THRUST) 
@@ -668,10 +720,9 @@ MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 		{
 			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
 			 float integral;
-			 integral = integral_ude(i) + _ude.torque_est[i] - _ude.feedforward[i] - (_ude.u_l_kp[i] + _ude.u_l_kd[i])/I_quadrotor(i) + _ude.u_l_km[i] + _ude.f1_est[i] + MOTOR_ALPHA * _ude.f1_dot_est[i];
-			//float integral = integral_ude(i) +  Kp_ude(i) * _ude.error_attitude[i] * dt;
+			 integral = integral_ude(i) + dt * (_ude.torque_est[i] - _ude.feedforward[i] - _ude.u_l_kp[i] - _ude.u_l_kd[i] - _ude.u_l_km[i] + (Km_ude(i) + 1) * _ude.f1_est[i] + MOTOR_ALPHA * _ude.f1_dot_est[i]);
 
-			if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
+			if (PX4_ISFINITE(integral) && integral > -integral_limit_ude(i) && integral < integral_limit_ude(i)) 
 			{
 				integral_ude(i) = integral;
 			}
@@ -680,7 +731,8 @@ MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 
 	for (int i = 0; i < 2; i++) 
 	{
-		_ude.u_total[i] = _ude.feedforward[i] + _ude.u_l_kp[i] + _ude.u_l_kd[i] + _ude.u_l_km[i] + _ude.u_d[i];
+		_ude.u_total[i] = _ude.feedforward[i] + _ude.u_l_kp[i] + _ude.u_l_kd[i] + _ude.u_l_km[i]  - _ude.u_d[i];
+		//
 	}
 
 	print_time = print_time + dt;
@@ -688,10 +740,9 @@ MulticopterAttitudeControl::control_attitude_m_ude(float dt)
 	if (print_time - last_print_time > 5.0f) 
 	{
 		last_print_time = print_time;
-		mavlink_log_info(&mavlink_log_pub, "torque_est[0]: %f, torque_est[1]: %f", &_ude.torque_est[0], &_ude.torque_est[1]);
-		mavlink_log_info(&mavlink_log_pub, "torque_des[0]: %f, torque_des[1]: %f", &_ude.u_total[0], &_ude.u_total[1]);
+		//mavlink_log_info(&mavlink_log_pub, "torque_est[0]: %f, torque_est[1]: %f", &_ude.torque_est[0], &_ude.torque_est[1]);
+		//mavlink_log_info(&mavlink_log_pub, "torque_des[0]: %f, torque_des[1]: %f", &_ude.u_total[0], &_ude.u_total[1]);
 	}	
-
 
 
 }
@@ -749,15 +800,9 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 	for (int i = 0; i < 2; i++) 
 	{
 		_ude.feedforward[i] = I_quadrotor(i) * _ude.attitude_ddot_ref[i];
-		_ude.u_l_kp[i] = I_quadrotor(i) * Kp_ude(i) * _ude.error_attitude[i];
-		_ude.u_l_kd[i] = I_quadrotor(i) * Kd_ude(i) * _ude.error_attitude_rate[i];
-
-	    _ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i) * _ude.error_attitude_rate[i];
-		//_ude.u_d_ev[i] = I_quadrotor(i) / T_ude(i) * (_ude.error_attitude_rate[i] + Kd_ude(i) * _ude.error_attitude[i]);
-		
-		_ude.u_d_int[i] = I_quadrotor(i) / T_ude(i) * integral_ude(i);
-
-		_ude.u_d[i] = _ude.u_d_ev[i] + _ude.u_d_int[i];
+		_ude.u_l_kp[i] = Kp_ude(i) * _ude.error_attitude[i];
+		_ude.u_l_kd[i] = Kd_ude(i) * _ude.error_attitude_rate[i];
+		_ude.u_d[i] = I_quadrotor(i) / T_ude(i) * _ude.error_attitude_rate[i] + 1.0f / T_ude(i) * integral_ude(i);
 	}	
 
 	//当开始推油门到MIN_TAKEOFF_THRUST之后才开始积分
@@ -766,10 +811,9 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 		for (int i = 0; i < 2; i++) 
 		{
 			// Perform the integration using a first order method and do not propagate the result if out of range or invalid
-			 float integral = integral_ude(i) +  Kp_ude(i) * _ude.error_attitude[i] * dt + Kd_ude(i) * _ude.error_attitude_rate[i]* dt;
-			//float integral = integral_ude(i) +  Kp_ude(i) * _ude.error_attitude[i] * dt;
+			 float integral = integral_ude(i) - dt *( _ude.feedforward[i] + Kp_ude(i) * _ude.error_attitude[i]  + Kd_ude(i) * _ude.error_attitude_rate[i]);
 
-			if (PX4_ISFINITE(integral) && _ude.u_d[i] > -integral_limit_ude(i) && _ude.u_d[i] < integral_limit_ude(i)) 
+			if (PX4_ISFINITE(integral) && integral > -integral_limit_ude(i) && integral < integral_limit_ude(i)) 
 			{
 				integral_ude(i) = integral;
 			}
@@ -783,7 +827,7 @@ MulticopterAttitudeControl::control_attitude_ude(float dt)
 
 	for (int i = 0; i < 2; i++) 
 	{
-		_ude.u_total[i] = _ude.feedforward[i] + _ude.u_l_kp[i] + _ude.u_l_kd[i] + _ude.u_d[i];
+		_ude.u_total[i] = _ude.feedforward[i] + _ude.u_l_kp[i] + _ude.u_l_kd[i] - _ude.u_d[i];
 	}	
 }
 
@@ -833,20 +877,23 @@ MulticopterAttitudeControl::control_attitude(float dt)
 		// roll_sp = 0, pitch_sp =0, yaw_sp = yaw_now
 		if (input_source == 0)
 		{
+			input_source_time = 0.0f;
 			att_ref(0) = 0.0f;
 			att_ref(1) = 0.0f;
 
 			qd = att_ref;
+
+			_ude.input_time = 0.0f;
 		}
 		// step input
 		else if (input_source == 1)
 		{
 			_ude.input_time =  _ude.input_time + dt;
 
-			if(input_source_time < 20)
+			if(input_source_time < 10)
 			{
 				att_ref(1) = 30.0f / 57.3f;
-			}else if(input_source_time < 40)
+			}else if(input_source_time < 20)
 			{
 				att_ref(1) = -30.0f / 57.3f;
 			}else
@@ -863,17 +910,61 @@ MulticopterAttitudeControl::control_attitude(float dt)
 		{
 			_ude.input_time =  _ude.input_time + dt;
 
-			const float cos_angle = cos(omega * input_source_time)/ 57.3f;
-    		const float sin_angle = sin(omega * input_source_time)/ 57.3f;
+			float cos_angle = 30.0f / 57.3f * cos(omega * input_source_time);
+    		float sin_angle = 30.0f / 57.3f * sin(omega * input_source_time);
 
-			att_ref(1) = 30.0f * sin_angle;
+			att_ref(1) = sin_angle;
 
-			att_dot_ref[1] = 30.0f * omega * cos_angle;
+			att_dot_ref[1] =  omega * cos_angle;
 
 			// only in this case , attitude_ddot_ref is not zero.
-			att_ddot_ref[1] = - 30.0f * omega * omega * sin_angle;
+			att_ddot_ref[1] = -  omega * omega * sin_angle;
 
-			att_dddot_ref[1] = - 30.0f * omega * omega * omega * cos_angle;
+			att_dddot_ref[1] = - omega * omega * omega * cos_angle;
+
+			qd = att_ref;
+
+			input_source_time = input_source_time + dt;
+		}
+		else if (input_source == 3)
+		{
+			_ude.input_time =  _ude.input_time + dt;
+
+
+			if(input_source_time < 5)
+			{
+				att_ref(1) = 0.0f;
+			}else if(input_source_time < 10)
+			{
+				att_ref(1) = 30.0f / 57.3f;
+			}else if(input_source_time < 15)
+			{
+				att_ref(1) = -30.0f / 57.3f;
+			}
+			else if(input_source_time < 20)
+			{
+				att_ref(1) = 0.0f;
+			}
+			else if(input_source_time < 30)
+			{
+			    float cos_angle = 30.0f / 57.3f * cos(omega * (input_source_time-20.0f));
+				float sin_angle = 30.0f / 57.3f * sin(omega * (input_source_time-20.0f));
+
+				att_ref(1) = sin_angle;
+
+				att_dot_ref[1] =  omega * cos_angle;
+
+				// only in this case , attitude_ddot_ref is not zero.
+				att_ddot_ref[1] = -  omega * omega * sin_angle;
+
+				att_dddot_ref[1] = - omega * omega * omega * cos_angle;
+			}
+			else if (input_source_time < 40)
+			{
+				att_ref(1) = 0.0f;
+			}
+
+
 
 			qd = att_ref;
 
@@ -967,24 +1058,26 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	}
 
 	//For log
-	_ude.dt = dt;
 
 	_ude.thrust_sp = _thrust_sp;
 
 	Eulerf _attitude_now = q;
-	Eulerf _attitude_sp = qd;
 
 	for (int i = 0; i < 3; i++)
 	{
-		_ude.attitude_ref[i] = _attitude_sp(i);
+		_ude.attitude_ref[i] = att_ref(i);
 		_ude.attitude_dot_ref[i] = _rates_sp(i);
 		_ude.attitude_ddot_ref[i] = att_ddot_ref[i];
 		_ude.attitude_dddot_ref[i] = att_dddot_ref[i];
 		
 		_ude.attitude_now[i] = _attitude_now(i);
 		
-		_ude.error_attitude[i] = _attitude_sp(i) - _attitude_now(i);
+		_ude.error_attitude[i] = _ude.attitude_ref[i] - _ude.attitude_now[i];
 	}
+
+	// _ude.attitude_rate_now[0] = _v_att.rollspeed;
+	// _ude.attitude_rate_now[1] = _v_att.pitchspeed;
+	// _ude.attitude_rate_now[2] = _v_att.yawspeed;
 
 }
 
@@ -1122,8 +1215,9 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	{
 		_ude.attitude_rate_now[i] = rates(i);
 
-		_ude.u_total[i] = _att_control(i);
 	}
+
+	_ude.u_total[2] = _att_control(2);
 
 }
 
@@ -1143,6 +1237,7 @@ MulticopterAttitudeControl::run()
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
 	_battery_status_sub = orb_subscribe(ORB_ID(battery_status));
+	_outputs_sub = orb_subscribe(ORB_ID(actuator_outputs));
 
 	_gyro_count = math::min(orb_group_count(ORB_ID(sensor_gyro)), MAX_GYRO_COUNT);
 
@@ -1267,6 +1362,15 @@ MulticopterAttitudeControl::run()
 				}else
 				{
 
+
+					if (use_platform == 1)
+					{
+						_ude.u_total[0] = 0.0f;
+						_ude.u_total[2] = 0.0f;
+					}
+
+					mixer(_ude.u_total[0],_ude.u_total[1],_ude.u_total[2],_ude.thrust_sp);
+
 					// choose normal mode or platform mode. if in platform mode, select the input source
 					if (use_platform == 1)
 					{
@@ -1274,7 +1378,6 @@ MulticopterAttitudeControl::run()
 						_mixer.output_yaw = 0.0f;
 					}
 
-					mixer(_ude.u_total[0],_ude.u_total[1],_ude.u_total[2],_ude.thrust_sp);
 					_actuators.control[0] = (PX4_ISFINITE(_mixer.output_roll)) ? _mixer.output_roll : 0.0f;
 					_actuators.control[1] = (PX4_ISFINITE(_mixer.output_pitch)) ? _mixer.output_pitch : 0.0f;
 					_actuators.control[2] = (PX4_ISFINITE(_mixer.output_yaw)) ? _mixer.output_yaw : 0.0f;

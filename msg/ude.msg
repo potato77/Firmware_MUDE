@@ -1,8 +1,5 @@
 # uORB topic for ude attitude control
 
-float32 dt
-
-
 float32 start_time
 
 float32 input_time
@@ -25,21 +22,24 @@ float32[3] feedforward
 
 float32[3] u_l_kp                     # feedback linearization
 float32[3] u_l_kd
-
-
 float32[3] u_l_km              ## only for mUDE
+float32[3] u_d
 
 float32[3] torque_ref           ## only for mUDE
+float32[4] actuator_output
+float32[4] throttle_est
+float32[4] thrust_est
+float32 Mx_est
+float32 My_est
+float32 Mz_est
+float32 T_est
 float32[3] torque_est           ## only for mUDE
 
 float32[3] f1_est           ## only for mUDE
 float32[3] f1_dot_est           ## only for mUDE
 float32[3] f2_est           ## only for mUDE
 float32[3] f_est           ## only for mUDE
-
-float32[3] u_d_ev                      # uncertainties compensation
-float32[3] u_d_int
-float32[3] u_d
+float32[3] f2
 
 float32[3] u_total                  # control input (torque)
 

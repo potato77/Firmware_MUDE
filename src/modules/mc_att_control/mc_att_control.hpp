@@ -35,7 +35,7 @@
 #include <mathlib/math/filter/LowPassFilter2p.hpp>
 #include <mathlib/math/filter/LowPassFilter.hpp>
 #include <mathlib/math/filter/HighPassFilter.hpp>
-#include <mathlib/math/filter/LowPassFilter2.hpp>
+#include <mathlib/math/filter/HighPassFilter2.hpp>
 #include <mathlib/math/filter/BandPassFilter.hpp>
 #include <mathlib/math/filter/LPFwithDelay.hpp>
 #include <matrix/matrix/math.hpp>
@@ -63,6 +63,7 @@
 #include <uORB/topics/ude.h>
 #include <uORB/topics/mixer.h>
 #include <uORB/topics/mavlink_log.h>
+#include <uORB/topics/actuator_outputs.h>
 /**
  * Multicopter attitude control app start / stop handling function
  */
@@ -138,10 +139,6 @@ private:
 	 */
 	void		control_attitude_cascade_ude(float dt);
 
-	float 		adrc_fhan(float v1, float v2, float r0, float h0);
-
-	float 		adrc_sign(float val);
-
 	void        mixer(float roll,float pitch,float yaw,float thrust);
 
 	float       thrust_to_throttle(float thrust);
@@ -166,6 +163,7 @@ private:
 	int		_sensor_gyro_sub[MAX_GYRO_COUNT];	/**< gyro data subscription */
 	int		_sensor_correction_sub{-1};	/**< sensor thermal correction subscription */
 	int		_sensor_bias_sub{-1};		/**< sensor in-run bias correction subscription */
+    int     _outputs_sub{-1};
 
 	unsigned _gyro_count{1};
 	int _selected_gyro{0};
@@ -195,6 +193,7 @@ private:
 	struct sensor_bias_s			_sensor_bias {};	/**< sensor in-run bias corrections */
 	struct	ude_s _ude {};
 	struct	mixer_s _mixer {};
+	struct actuator_outputs_s _actuator_outputs {};
 
 	matrix::Vector3f integral_ude;			/**<integral error for ude*/
 
@@ -207,10 +206,10 @@ private:
 	float _loop_update_rate_hz{initial_update_rate_hz};          /**< current rate-controller loop update rate in [Hz] */
 
 	math::LowPassFilter LPF[2];
-	math::LowPassFilter2 LPF2[2];
 	math::HighPassFilter HPF[2];
+	math::HighPassFilter2 HPF2[2];
 	math::BandPassFilter BPF[2];
-	math::LPFwithDelay LPFdelay[3];
+	math::LPFwithDelay LPFdelay[2];
 
 
 	matrix::Vector3f _rates_prev;			/**< angular rates on previous step */
@@ -228,19 +227,19 @@ private:
 		(ParamInt<px4::params::UDE_SWITCH>) _switch_ude,
 		(ParamInt<px4::params::TD_SWITCH>) _switch_td,
 		(ParamInt<px4::params::MIXER_SWITCH>) _switch_mixer,
+		
 		(ParamFloat<px4::params::UDE_T_FILTER>) _ude_T_filter,
-		(ParamFloat<px4::params::UDE_IXX>) _Ixx,
-		(ParamFloat<px4::params::UDE_IYY>) _Iyy,
-		(ParamFloat<px4::params::UDE_IZZ>) _Izz,
+		
+		(ParamFloat<px4::params::MUDE_TF>) _Tf,
+		(ParamFloat<px4::params::MUDE_TF1>) _Tf1,
+		(ParamFloat<px4::params::MUDE_TF2>) _Tf2,
+		(ParamFloat<px4::params::MUDE_TTORQUE>) _T_torque,
+		
 		(ParamFloat<px4::params::UDE_KP>) _Kp_ude,
-
 		(ParamFloat<px4::params::UDE_KD>) _Kd_ude,
-
 		(ParamFloat<px4::params::UDE_KM>) _Km_ude,
 
 		(ParamFloat<px4::params::UDE_T>) _T_ude,
-
-		(ParamFloat<px4::params::UDE_INT_LIM>) _integral_limit_ude,
 
 		(ParamFloat<px4::params::MC_ROLL_P>) _roll_p,
 		(ParamFloat<px4::params::MC_ROLLRATE_P>) _roll_rate_p,
@@ -312,6 +311,11 @@ private:
 	float print_time;
 	float last_print_time;
 
+	float T_f;
+	float T_f1;
+	float T_f2;
+	float T_torque;
+
 	matrix::Vector3f I_quadrotor;
 	matrix::Vector3f Kp_ude;
 	matrix::Vector3f Kd_ude;
@@ -332,7 +336,5 @@ private:
 
 	matrix::Vector3f attitude_dot_sp_last;    // rates_sp_last for ude
 	matrix::Vector3f attitude_sp_last; // attitude_sp_last for ude
-
-	matrix::Vector2f td_v2; 
 };
 
