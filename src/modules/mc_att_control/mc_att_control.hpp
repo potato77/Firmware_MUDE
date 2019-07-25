@@ -211,6 +211,8 @@ private:
 	math::BandPassFilter BPF[2];
 	math::LPFwithDelay LPFdelay[2];
 
+	math::HighPassFilter HPF_td[2];
+
 
 	matrix::Vector3f _rates_prev;			/**< angular rates on previous step */
 	matrix::Vector3f _rates_prev_filtered;		/**< angular rates on previous step (low-pass filtered) */

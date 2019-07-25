@@ -68,9 +68,9 @@
 #define Iyy 0.01f
 #define Izz 0.015f
 
-#define INT_LIMIT 0.5f
+#define INT_LIMIT 1.0f
 
-#define omega 1.0f
+#define omega 4.0f
 
 using namespace matrix;
 
@@ -184,6 +184,9 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	BPF[0].initialization(T_f1, T_f2);
 	BPF[1].initialization(T_f1, T_f2);
 
+	HPF_td[0].initialization(T_filter_ude);
+	HPF_td[1].initialization(T_filter_ude);
+
 	_vehicle_status.is_rotary_wing = true;
 
 	/* initialize quaternions in messages to be valid */
@@ -228,17 +231,20 @@ MulticopterAttitudeControl::parameters_updated()
 	T_f2 = _Tf2.get();
 	T_torque = _T_torque.get();
 
-	LPF[0].set_constant(T_f);
-	LPF[1].set_constant(T_f);
+	// LPF[0].set_constant(T_f);
+	// LPF[1].set_constant(T_f);
 
-	HPF[0].set_constant(T_f);
-	HPF[1].set_constant(T_f);
+	// HPF[0].set_constant(T_f);
+	// HPF[1].set_constant(T_f);
 
-	HPF2[0].set_constant(T_f1, T_f2);
-	HPF2[1].set_constant(T_f1, T_f2);
+	// HPF2[0].set_constant(T_f1, T_f2);
+	// HPF2[1].set_constant(T_f1, T_f2);
 
-	BPF[0].set_constant(T_f1, T_f2);
-	BPF[1].set_constant(T_f1, T_f2);
+	// BPF[0].set_constant(T_f1, T_f2);
+	// BPF[1].set_constant(T_f1, T_f2);
+
+	//HPF_td[0].set_constant(T_filter_ude);
+	//HPF_td[1].set_constant(T_filter_ude);
 
 	Kp_ude(0) = _Kp_ude.get();
 	Kp_ude(1) = _Kp_ude.get();
@@ -842,6 +848,7 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	Quatf qd(_v_att_sp.q_d);
 
 	Eulerf att_ref(qd);
+	Eulerf _attitude_now = q;
 	float att_dot_ref[3];
 	float att_ddot_ref[3];
 	float att_dddot_ref[3];
@@ -863,6 +870,8 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	{
 		_thrust_sp = 0.4f;
 
+		float Kp_att = 4.0f;
+
 		// roll_sp = 0, pitch_sp =0, yaw_sp = yaw_now
 		if (input_source == 0)
 		{
@@ -879,16 +888,31 @@ MulticopterAttitudeControl::control_attitude(float dt)
 		{
 			_ude.input_time =  _ude.input_time + dt;
 
-			if(input_source_time < 10)
+			if(input_source_time < 5)
 			{
-				att_ref(1) = 30.0f / 57.3f;
-			}else if(input_source_time < 20)
+				att_ref(1) = 0.0f;
+			}else if(input_source_time < 15)
 			{
-				att_ref(1) = -30.0f / 57.3f;
+				att_ref(1) = 20.0f / 57.3f;
+			}else if(input_source_time < 25)
+			{
+				att_ref(1) = -20.0f / 57.3f;
 			}else
 			{
 				att_ref(1) = 0.0f;
 			}
+
+			att_dot_ref[1] = Kp_att*(att_ref(1) - _attitude_now(1));
+
+			att_dot_ref[1] = math::constrain(att_dot_ref[1], -4.f, 4.f);
+
+			att_ddot_ref[1] = HPF_td[0].update(att_dot_ref[1], dt);
+
+			att_ddot_ref[1] = math::constrain(att_ddot_ref[1], -50.f, 50.f);
+
+			att_dddot_ref[1] = HPF_td[1].update(att_ddot_ref[1], dt);
+
+			att_dddot_ref[1] = math::constrain(att_dddot_ref[1], -100.f, 100.f);
 			
 			qd = att_ref;
 
@@ -1050,7 +1074,7 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 	_ude.thrust_sp = _thrust_sp;
 
-	Eulerf _attitude_now = q;
+	
 
 	for (int i = 0; i < 3; i++)
 	{

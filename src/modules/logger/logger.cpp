@@ -606,10 +606,10 @@ void Logger::add_default_topics()
 	add_topic("actuator_outputs", 100);
 	//add_topic("airspeed", 200);
 	//add_topic("att_pos_mocap", 50);
-	add_topic("battery_status", 50);
+	//add_topic("battery_status", 50);
 	//add_topic("camera_capture");
 	//add_topic("camera_trigger");
-	add_topic("cpuload");
+	//add_topic("cpuload");
 	//add_topic("distance_sensor", 100);
 	//add_topic("ekf2_innovations", 200);
 	//add_topic("esc_status", 250);
@@ -622,11 +622,11 @@ void Logger::add_default_topics()
 	//add_topic("mission");
 	//add_topic("mission_result");
 	//add_topic("optical_flow", 50);
-	add_topic("ping");
+	//add_topic("ping");
 	//add_topic("position_setpoint_triplet", 200);
-	add_topic("rate_ctrl_status", 100);
+	//add_topic("rate_ctrl_status", 100);
 	//add_topic("safety");
-	add_topic("sensor_combined", 100);
+	//add_topic("sensor_combined", 100);
 	//add_topic("sensor_preflight", 200);
 	//add_topic("system_power", 500);
 	//add_topic("tecs_status", 200);
@@ -646,7 +646,7 @@ void Logger::add_default_topics()
 	//add_topic("vehicle_vision_position");
 	//add_topic("vtol_vehicle_status", 200);
 	//add_topic("wind_estimate", 200);
-	add_topic("timesync_status");
+	//add_topic("timesync_status");
 	add_topic("mixer", 50);
 	add_topic("ude", 10);
 	//add_topic("innerloop_track", 100);
@@ -696,7 +696,7 @@ void Logger::add_debug_topics()
 void Logger::add_estimator_replay_topics()
 {
 	// for estimator replay (need to be at full rate)
-	add_topic("ekf2_timestamps");
+	//add_topic("ekf2_timestamps");
 
 	// current EKF2 subscriptions
 	add_topic("airspeed");
