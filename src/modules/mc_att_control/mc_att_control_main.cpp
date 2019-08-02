@@ -977,8 +977,6 @@ MulticopterAttitudeControl::control_attitude(float dt)
 				att_ref(1) = 0.0f;
 			}
 
-
-
 			qd = att_ref;
 
 			input_source_time = input_source_time + dt;

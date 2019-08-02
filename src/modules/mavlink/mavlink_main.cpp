@@ -2051,7 +2051,7 @@ Mavlink::task_main(int argc, char *argv[])
 		configure_stream("ATTITUDE_TARGET", 10.0f);
 		configure_stream("ESTIMATOR_STATUS", 1.0f);
 		configure_stream("EXTENDED_SYS_STATE", 5.0f);
-		configure_stream("HIGHRES_IMU", 10.0f);
+		configure_stream("HIGHRES_IMU", 100.0f);
 		configure_stream("HOME_POSITION", 0.5f);
 		configure_stream("LOCAL_POSITION_NED", 60.0f);
 		configure_stream("PING", 1.0f);
